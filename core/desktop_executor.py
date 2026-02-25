@@ -1,5 +1,5 @@
 import time
-from system_actions import execute_system_shortcut, open_application, system_click, type_system_text, take_screenshot
+from core.freecad_functions import execute_system_shortcut, open_application, system_click, type_system_text, take_screenshot
 
 
 def denormalize(value: int, screen_dimension: int) -> int:
