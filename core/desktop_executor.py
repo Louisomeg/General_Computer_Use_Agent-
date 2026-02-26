@@ -9,9 +9,10 @@ from core.settings import (
     CLICK_DELAY,
 )
 from core import freecad_functions
+from core.executor import Executor
 
 
-class DesktopExecutor:
+class DesktopExecutor(Executor):
     """Executes Gemini computer-use function calls on an Ubuntu desktop via xdotool.
 
     Handles both predefined Gemini functions (click_at, type_text_at, etc.)
