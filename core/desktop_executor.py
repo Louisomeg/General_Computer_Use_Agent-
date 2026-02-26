@@ -1,142 +1,222 @@
+import subprocess
 import time
-from core.freecad_functions import execute_system_shortcut, open_application, system_click, type_system_text, take_screenshot
+
+from core.settings import (
+    SCREEN_WIDTH,
+    SCREEN_HEIGHT,
+    ACTION_DELAY,
+    TYPING_DELAY,
+    CLICK_DELAY,
+)
+from core import freecad_functions
 
 
-def denormalize(value: int, screen_dimension: int) -> int:
-    return int(value / 1000 * screen_dimension)
+class DesktopExecutor:
+    """Executes Gemini computer-use function calls on an Ubuntu desktop via xdotool.
 
+    Handles both predefined Gemini functions (click_at, type_text_at, etc.)
+    and custom functions (system_shortcut, freecad_shortcut, etc.).
+    All actions are performed through xdotool subprocess calls.
+    """
 
-def do_scroll(page, x, y, direction, pixels):
-    page.mouse.move(x, y)
-    if direction == "down":
-        page.mouse.wheel(0, pixels)
-    elif direction == "up":
-        page.mouse.wheel(0, -pixels)
-    elif direction == "right":
-        page.mouse.wheel(pixels, 0)
-    elif direction == "left":
-        page.mouse.wheel(-pixels, 0)
+    def __init__(self, screen_width: int = None, screen_height: int = None):
+        self.screen_width = screen_width or SCREEN_WIDTH
+        self.screen_height = screen_height or SCREEN_HEIGHT
 
+    def denormalize(self, value: int, screen_dimension: int) -> int:
+        """Convert a 0-999 normalized coordinate to actual pixel coordinate."""
+        return int(value / 1000 * screen_dimension)
 
-def execute_function_calls(candidate, page, screen_width, screen_height):
-    results = []
-    function_calls = []
+    def execute(self, function_calls) -> list:
+        """Execute a list of function calls from a Gemini response.
 
-    for part in candidate.content.parts:
-        if part.function_call:
-            function_calls.append(part.function_call)
+        Args:
+            function_calls: List of function call objects, each with
+                .name (str) and .args (dict-like).
 
-    for function_call in function_calls:
-        action_result = {}
-        function_name = function_call.name
-        args = function_call.args
-        print(f"  -> Executing: {function_name}({dict(args) if args else ''})")
+        Returns:
+            List of (function_name, result_dict) tuples.
+        """
+        results = []
 
-        try:
-            if function_name == "system_shortcut":
-                action_result = execute_system_shortcut(args["shortcut"])
-
-            elif function_name == "open_application":
-                action_result = open_application(args["name"])
-
-            elif function_name == "system_click":
-                actual_x = denormalize(args["x"], screen_width)
-                actual_y = denormalize(args["y"], screen_height)
-                action_result = system_click(actual_x, actual_y)
-
-            elif function_name == "system_type":
-                action_result = type_system_text(args["text"])
-
-            elif function_name == "take_screenshot":
-                action_result = take_screenshot()
-
-            # Browser actions (existing)
-            elif function_name == "open_web_browser":
-                pass
-
-            elif function_name == "wait_5_seconds":
-                time.sleep(5)
-
-            elif function_name == "go_back":
-                page.go_back()
-
-            elif function_name == "go_forward":
-                page.go_forward()
-
-            elif function_name == "search":
-                page.goto("https://www.google.com")
-
-            elif function_name == "navigate":
-                page.goto(args["url"])
-
-            elif function_name == "click_at":
-                actual_x = denormalize(args["x"], screen_width)
-                actual_y = denormalize(args["y"], screen_height)
-                page.mouse.click(actual_x, actual_y)
-
-            elif function_name == "hover_at":
-                actual_x = denormalize(args["x"], screen_width)
-                actual_y = denormalize(args["y"], screen_height)
-                page.mouse.move(actual_x, actual_y)
-
-            elif function_name == "type_text_at":
-                actual_x = denormalize(args["x"], screen_width)
-                actual_y = denormalize(args["y"], screen_height)
-                text = args["text"]
-                press_enter = args.get("press_enter", True)
-                clear_before = args.get("clear_before_typing", True)
-
-                page.mouse.click(actual_x, actual_y)
-
-                if clear_before:
-                    page.keyboard.press("Control+A")
-                    page.keyboard.press("Backspace")
-
-                page.keyboard.type(text)
-
-                if press_enter:
-                    page.keyboard.press("Enter")
-
-            elif function_name == "key_combination":
-                page.keyboard.press(args["keys"])
-
-            elif function_name == "scroll_document":
-                direction = args["direction"]
-                do_scroll(page, screen_width // 2, screen_height // 2, direction, 500)
-
-            elif function_name == "scroll_at":
-                actual_x = denormalize(args["x"], screen_width)
-                actual_y = denormalize(args["y"], screen_height)
-                direction = args["direction"]
-                magnitude = args.get("magnitude", 800)
-                scroll_pixels = int(magnitude / 1000 * max(screen_width, screen_height))
-                do_scroll(page, actual_x, actual_y, direction, scroll_pixels)
-
-            elif function_name == "drag_and_drop":
-                start_x = denormalize(args["x"], screen_width)
-                start_y = denormalize(args["y"], screen_height)
-                end_x = denormalize(args["destination_x"], screen_width)
-                end_y = denormalize(args["destination_y"], screen_height)
-
-                page.mouse.move(start_x, start_y)
-                page.mouse.down()
-                page.mouse.move(end_x, end_y)
-                page.mouse.up()
-
-            else:
-                print(f"  Warning: Unknown function '{function_name}'")
-                action_result = {"error": f"Unknown function: {function_name}"}
+        for fc in function_calls:
+            function_name = fc.name
+            args = dict(fc.args) if fc.args else {}
+            print(f"  -> Executing: {function_name}({args})")
 
             try:
-                page.wait_for_load_state("networkidle", timeout=3000)
-            except TimeoutError:
-                pass
-            time.sleep(0.5)
+                handler = self._get_handler(function_name)
+                if handler:
+                    result = handler(args)
+                else:
+                    print(f"  Warning: Unknown function '{function_name}'")
+                    result = {"error": f"Unknown function: {function_name}"}
+            except Exception as e:
+                print(f"  Error executing {function_name}: {e}")
+                result = {"error": str(e)}
 
-        except Exception as e:
-            print(f"  Error executing {function_name}: {e}")
-            action_result = {"error": str(e)}
+            time.sleep(ACTION_DELAY)
+            results.append((function_name, result))
 
-        results.append((function_name, action_result))
+        return results
 
-    return results
+    def _get_handler(self, name: str):
+        """Return the handler method for a given function name, or None."""
+        handlers = {
+            # Predefined Gemini functions (desktop via xdotool)
+            "click_at": self._click_at,
+            "hover_at": self._hover_at,
+            "type_text_at": self._type_text_at,
+            "key_combination": self._key_combination,
+            "scroll_at": self._scroll_at,
+            "scroll_document": self._scroll_document,
+            "drag_and_drop": self._drag_and_drop,
+            "wait_5_seconds": self._wait,
+            # Custom functions
+            "system_shortcut": self._system_shortcut,
+            "freecad_shortcut": self._freecad_shortcut,
+            "right_click_at": self._right_click_at,
+            "double_click_at": self._double_click_at,
+            "open_application": self._open_application,
+        }
+        return handlers.get(name)
+
+    # =========================================================================
+    # Predefined function handlers (xdotool implementations)
+    # =========================================================================
+
+    def _click_at(self, args: dict) -> dict:
+        x = self.denormalize(args["x"], self.screen_width)
+        y = self.denormalize(args["y"], self.screen_height)
+        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
+        subprocess.run(["xdotool", "click", "1"], check=True)
+        time.sleep(CLICK_DELAY)
+        return {"success": True}
+
+    def _hover_at(self, args: dict) -> dict:
+        x = self.denormalize(args["x"], self.screen_width)
+        y = self.denormalize(args["y"], self.screen_height)
+        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
+        return {"success": True}
+
+    def _type_text_at(self, args: dict) -> dict:
+        x = self.denormalize(args["x"], self.screen_width)
+        y = self.denormalize(args["y"], self.screen_height)
+        text = args["text"]
+        press_enter = args.get("press_enter", True)
+        clear_before = args.get("clear_before_typing", True)
+
+        # Click to focus the input field
+        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
+        subprocess.run(["xdotool", "click", "1"], check=True)
+        time.sleep(CLICK_DELAY)
+
+        # Optionally clear existing text
+        if clear_before:
+            subprocess.run(["xdotool", "key", "ctrl+a"], check=True)
+            subprocess.run(["xdotool", "key", "BackSpace"], check=True)
+
+        # Type the text
+        subprocess.run(
+            ["xdotool", "type", "--delay", str(TYPING_DELAY), text],
+            check=True,
+        )
+
+        # Optionally press Enter
+        if press_enter:
+            subprocess.run(["xdotool", "key", "Return"], check=True)
+
+        return {"success": True}
+
+    def _key_combination(self, args: dict) -> dict:
+        keys = args["keys"]
+        subprocess.run(["xdotool", "key", keys], check=True)
+        return {"success": True}
+
+    def _scroll_at(self, args: dict) -> dict:
+        x = self.denormalize(args["x"], self.screen_width)
+        y = self.denormalize(args["y"], self.screen_height)
+        direction = args["direction"]
+        magnitude = args.get("magnitude", 500)
+
+        # Convert magnitude (0-1000) to scroll wheel clicks (1-10)
+        scroll_clicks = max(1, int(magnitude / 100))
+
+        button_map = {"up": "4", "down": "5", "left": "6", "right": "7"}
+        button = button_map.get(direction)
+        if not button:
+            return {"error": f"Unknown scroll direction: {direction}"}
+
+        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
+        subprocess.run(
+            ["xdotool", "click", "--repeat", str(scroll_clicks), button],
+            check=True,
+        )
+        return {"success": True}
+
+    def _scroll_document(self, args: dict) -> dict:
+        direction = args["direction"]
+        # Scroll at screen center with default magnitude
+        center_x = self.screen_width // 2
+        center_y = self.screen_height // 2
+
+        button_map = {"up": "4", "down": "5", "left": "6", "right": "7"}
+        button = button_map.get(direction)
+        if not button:
+            return {"error": f"Unknown scroll direction: {direction}"}
+
+        subprocess.run(
+            ["xdotool", "mousemove", str(center_x), str(center_y)],
+            check=True,
+        )
+        subprocess.run(
+            ["xdotool", "click", "--repeat", "5", button],
+            check=True,
+        )
+        return {"success": True}
+
+    def _drag_and_drop(self, args: dict) -> dict:
+        start_x = self.denormalize(args["x"], self.screen_width)
+        start_y = self.denormalize(args["y"], self.screen_height)
+        end_x = self.denormalize(args["destination_x"], self.screen_width)
+        end_y = self.denormalize(args["destination_y"], self.screen_height)
+
+        subprocess.run(
+            ["xdotool", "mousemove", str(start_x), str(start_y)],
+            check=True,
+        )
+        subprocess.run(["xdotool", "mousedown", "1"], check=True)
+        time.sleep(0.1)
+        subprocess.run(
+            ["xdotool", "mousemove", "--sync", str(end_x), str(end_y)],
+            check=True,
+        )
+        subprocess.run(["xdotool", "mouseup", "1"], check=True)
+        return {"success": True}
+
+    def _wait(self, args: dict) -> dict:
+        time.sleep(5)
+        return {"success": True}
+
+    # =========================================================================
+    # Custom function handlers (delegate to freecad_functions)
+    # =========================================================================
+
+    def _system_shortcut(self, args: dict) -> dict:
+        return freecad_functions.execute_system_shortcut(args["shortcut_name"])
+
+    def _freecad_shortcut(self, args: dict) -> dict:
+        return freecad_functions.execute_freecad_shortcut(args["shortcut_name"])
+
+    def _right_click_at(self, args: dict) -> dict:
+        x = self.denormalize(args["x"], self.screen_width)
+        y = self.denormalize(args["y"], self.screen_height)
+        return freecad_functions.right_click(x, y)
+
+    def _double_click_at(self, args: dict) -> dict:
+        x = self.denormalize(args["x"], self.screen_width)
+        y = self.denormalize(args["y"], self.screen_height)
+        return freecad_functions.double_click(x, y)
+
+    def _open_application(self, args: dict) -> dict:
+        return freecad_functions.open_application(args["name"])
