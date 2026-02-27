@@ -8,6 +8,7 @@ from google.genai.types import Candidate, GenerateContentConfig
 from core.custom_tools import get_custom_declarations
 from core.executor import Executor
 from core.screenshot import capture_desktop_screenshot
+from core.settings import SYSTEM_INSTRUCTION
 
 MAX_SCREENSHOTS = 1 # FIX: this was random.
 
@@ -94,6 +95,7 @@ class AgenticLoop:
 
     def config(self):
         content_config = GenerateContentConfig(
+            system_instruction=SYSTEM_INSTRUCTION,
             temperature=1,
             top_p=0.95,
             top_k=40,
