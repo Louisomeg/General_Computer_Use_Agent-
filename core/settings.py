@@ -12,7 +12,7 @@ TYPING_DELAY = 50               # Milliseconds between keystrokes (xdotool --del
 SHORTCUT_DELAY = 0.5            # Pause after a keyboard shortcut
 FREECAD_SEQUENCE_DELAY = 0.15   # Pause between keys in a FreeCAD two-key sequence
 APP_LAUNCH_DELAY = 2.0          # Pause after launching an application
-SEARCH_TYPE_DELAY = 1.0         # Pause after typing in Ubuntu launcher
+SEARCH_TYPE_DELAY = 2.0         # Pause after typing in Ubuntu launcher (needs time to index)
 CLICK_DELAY = 0.3               # Pause after a mouse click
 
 # Screenshot
@@ -70,12 +70,36 @@ Instead, look at the screenshot and:
 - Click on the "Activities" text in the top-left corner to open the overview
 - Click on application icons in the dock/taskbar to launch or focus them
 
-## How to Open Applications
-1. First try: open_application("AppName") then wait_5_seconds
-2. If the app doesn't appear: look at the taskbar — if you see the app's icon/name
-   in the top bar or bottom dock, CLICK on it
-3. Last resort: click "Activities" in the top-left corner, type the app name
-   in the search bar, and click the result
+## How to Open Applications — Step by Step
+If you need to open an application, follow these steps IN ORDER. Move to the next
+step ONLY if the previous one did not work.
+
+Step 1: Use open_application("AppName"), then wait_5_seconds.
+        Look at the screenshot — did a new window appear? If yes, you're done.
+
+Step 2: Look at the TASKBAR (the bar at the very top of the screen).
+        It shows the names/icons of running applications.
+        If you see the app name there, CLICK on it to bring its window to front.
+
+Step 3: Click "Activities" text in the TOP-LEFT corner of the screen (coordinates
+        roughly x=30, y=10). This opens the GNOME Activities overview.
+        - You will see a search bar at the top center and open window thumbnails.
+        - Click the search bar and type the app name using type_text_at.
+        - Wait for search results to appear below.
+        - CLICK on the application icon in the search results (do NOT press Enter).
+
+Step 4: If search shows nothing, look for the "Show Applications" grid icon.
+        It is a grid of dots at the BOTTOM of the left dock/sidebar
+        (approximately x=15, y=980). Click it to open the full application grid.
+        - This shows ALL installed applications as a grid of icons with labels.
+        - Scroll down if needed to find the app.
+        - CLICK on the application icon to launch it.
+
+Step 5: If you still can't find it, the application may not be installed.
+        Report this to the user and stop.
+
+IMPORTANT: At each step, LOOK at the screenshot to verify what happened before
+moving to the next step. Never skip steps or assume something worked without checking.
 
 ## Coordinate System
 - All coordinates use a NORMALIZED 0-999 range.

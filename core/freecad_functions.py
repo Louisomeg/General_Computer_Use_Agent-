@@ -17,13 +17,18 @@ def execute_system_shortcut(shortcut_name: str) -> dict:
     """Execute an Ubuntu desktop keyboard shortcut by name.
 
     Looks up the shortcut in UBUNTU_SHORTCUTS and fires it via xdotool.
+    Uses --clearmodifiers to release any stuck modifier keys before sending,
+    which prevents ghost modifiers from corrupting the shortcut on GNOME.
     """
     entry = UBUNTU_SHORTCUTS.get(shortcut_name)
     if not entry:
         return {"error": f"Unknown Ubuntu shortcut: {shortcut_name}"}
 
     try:
-        subprocess.run(["xdotool", "key", entry["keys"]], check=True)
+        subprocess.run(
+            ["xdotool", "key", "--clearmodifiers", entry["keys"]],
+            check=True,
+        )
         time.sleep(SHORTCUT_DELAY)
         return {"success": True}
     except subprocess.CalledProcessError as e:
@@ -45,10 +50,16 @@ def execute_freecad_shortcut(shortcut_name: str) -> dict:
     try:
         if isinstance(keys, list):
             for key in keys:
-                subprocess.run(["xdotool", "key", key], check=True)
+                subprocess.run(
+                    ["xdotool", "key", "--clearmodifiers", key],
+                    check=True,
+                )
                 time.sleep(FREECAD_SEQUENCE_DELAY)
         else:
-            subprocess.run(["xdotool", "key", keys], check=True)
+            subprocess.run(
+                ["xdotool", "key", "--clearmodifiers", keys],
+                check=True,
+            )
         time.sleep(SHORTCUT_DELAY)
         return {"success": True}
     except subprocess.CalledProcessError as e:
@@ -61,14 +72,21 @@ def open_application(app_name: str) -> dict:
     Presses Super to open Activities, types the app name, presses Enter.
     """
     try:
-        subprocess.run(["xdotool", "key", "super"], check=True)
-        time.sleep(SEARCH_TYPE_DELAY)
         subprocess.run(
-            ["xdotool", "type", "--delay", str(TYPING_DELAY), app_name],
+            ["xdotool", "key", "--clearmodifiers", "super"],
             check=True,
         )
         time.sleep(SEARCH_TYPE_DELAY)
-        subprocess.run(["xdotool", "key", "Return"], check=True)
+        subprocess.run(
+            ["xdotool", "type", "--clearmodifiers", "--delay",
+             str(TYPING_DELAY), app_name],
+            check=True,
+        )
+        time.sleep(SEARCH_TYPE_DELAY)
+        subprocess.run(
+            ["xdotool", "key", "--clearmodifiers", "Return"],
+            check=True,
+        )
         time.sleep(APP_LAUNCH_DELAY)
         return {"success": True}
     except subprocess.CalledProcessError as e:
