@@ -75,16 +75,22 @@ class AgenticLoop:
 
             # handle function calls
             function_responses = executor.execute(function_calls)
-            new_responses = types.Content(
-                role='user',
-                parts=[
+
+            # Gemini Computer Use model requires every function response to
+            # include a 'url' field.  For desktop actions we use a placeholder.
+            # See: https://ai.google.dev/gemini-api/docs/computer-use
+            response_parts = []
+            for function_call, fc_response in function_responses:
+                fc_response.setdefault("url", "desktop://linux")
+                response_parts.append(
                     types.Part.from_function_response(
-                        name=function_call, 
-                        response=fc_response
-                    ) for function_call, fc_response in function_responses
-                ]
+                        name=function_call,
+                        response=fc_response,
+                    )
                 )
-            history.append(new_responses) 
+
+            new_responses = types.Content(role='user', parts=response_parts)
+            history.append(new_responses)
 
     def config(self):
         content_config = GenerateContentConfig(
