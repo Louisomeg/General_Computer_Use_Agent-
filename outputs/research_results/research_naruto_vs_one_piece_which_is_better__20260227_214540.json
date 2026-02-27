@@ -1,0 +1,124 @@
+{
+  "query": "naruto vs one piece which is better?",
+  "mode": "parallel",
+  "sub_queries": [
+    "Naruto vs One Piece total manga sales and media franchise revenue statistics comparison",
+    "Critical analysis comparing Naruto and One Piece storytelling world-building and character development",
+    "Naruto vs One Piece global popularity cultural impact and viewership ratings comparison"
+  ],
+  "worker_results": [
+    {
+      "sub_query": "Naruto vs One Piece total manga sales and media franchise revenue statistics comparison",
+      "data_points": 4,
+      "sources": 2,
+      "confidence": "medium"
+    },
+    {
+      "sub_query": "Critical analysis comparing Naruto and One Piece storytelling world-building and character development",
+      "data_points": 3,
+      "sources": 1,
+      "confidence": "medium"
+    },
+    {
+      "sub_query": "Naruto vs One Piece global popularity cultural impact and viewership ratings comparison",
+      "data_points": 4,
+      "sources": 1,
+      "confidence": "medium"
+    }
+  ],
+  "findings": {
+    "summary": "One Piece significantly leads Naruto in both manga sales and total media franchise revenue. One Piece has sold over 516 million copies worldwide, making it the best-selling manga in history, while Naruto has sold approximately 250 million copies. In terms of franchise revenue, One Piece is estimated to have generated over $20 billion USD, whereas Naruto has generated approximately $10 billion USD. One Piece continues to be a top earner with ongoing serialization and high-grossing films like One Piece Film: Red. | Naruto and One Piece represent two distinct approaches to shonen storytelling. Naruto focuses on a linear, character-driven narrative with high emotional stakes and individual growth, particularly through its 'ninja' world lore and personal bonds. In contrast, One Piece is celebrated for its peerless world-building, creating a vast, living world with complex history (the Void Century) and socio-political themes. While Naruto excels in deep individual character development and rivalries, One Piece shines in its long-term narrative planning and the cohesive development of its wide-ranging ensemble cast. | Based on available industry data and market comparisons, One Piece remains the dominant force in total commercial success, primarily driven by its record-breaking manga sales (over 516 million copies) and long-standing #1 status in Japan. Naruto, while trailing in total sales with approximately 250 million copies, has historically held a stronger cultural and viewership foothold in Western markets like North America and Europe, often serving as a primary entry point for anime fans. However, current trends indicate One Piece is rapidly closing this gap globally, spurred by high-profile adaptations and major narrative milestones. While One Piece wins on scale and domestic Japanese impact, Naruto maintains a highly competitive legacy in global cultural visibility.",
+    "data_points": [
+      {
+        "unit": "Million copies",
+        "source": "Wikipedia (List of best-selling manga)",
+        "fact": "One Piece Total Manga Sales",
+        "value": "516.6+"
+      },
+      {
+        "source": "Wikipedia (List of best-selling manga)",
+        "unit": "Million copies",
+        "value": "250+",
+        "fact": "Naruto Total Manga Sales"
+      },
+      {
+        "fact": "One Piece Media Franchise Revenue (Estimated)",
+        "value": "20.5",
+        "unit": "Billion USD",
+        "source": "Statista / TitleMax (Highest-grossing media franchises)"
+      },
+      {
+        "value": "10.3",
+        "fact": "Naruto Media Franchise Revenue (Estimated)",
+        "unit": "Billion USD",
+        "source": "Statista / TitleMax (Highest-grossing media franchises)"
+      },
+      {
+        "source": "Bing search summary (referencing kndrawing.com, flavor365.com)",
+        "unit": "N/A",
+        "value": "Linear, character-driven plot focused on emotional depth and personal growth.",
+        "fact": "Naruto storytelling style"
+      },
+      {
+        "fact": "One Piece world-building focus",
+        "value": "Expansive and interconnected, featuring complex political systems, geography, and deep lore.",
+        "unit": "N/A",
+        "source": "Bing search summary (referencing kndrawing.com, flavor365.com)"
+      },
+      {
+        "unit": "N/A",
+        "source": "Bing search summary (referencing kndrawing.com, flavor365.com)",
+        "fact": "Comparison of character arcs",
+        "value": "Naruto is praised for its deep individual character arcs (protagonists and villains), while One Piece is known for its strong ensemble cast and detailed backstories."
+      },
+      {
+        "unit": "copies sold",
+        "value": "500,000,000+",
+        "fact": "One Piece is the best-selling manga series of all time globally.",
+        "source": "Britannica / Game Rant (via search snippets)"
+      },
+      {
+        "value": "250,000,000+",
+        "unit": "copies sold",
+        "source": "Game Rant (via search snippets)",
+        "fact": "Naruto total lifetime manga sales."
+      },
+      {
+        "value": "Qualitative global success lead",
+        "unit": "N/A",
+        "source": "Game Rant snippet",
+        "fact": "Naruto has historically enjoyed higher popularity and market penetration in Western regions compared to One Piece."
+      },
+      {
+        "value": "Dominant in Japan",
+        "unit": "N/A",
+        "source": "KBIZoom snippet",
+        "fact": "One Piece consistently outperforms Naruto in the Japanese domestic market sales and rankings."
+      }
+    ],
+    "sources": [
+      "https://en.wikipedia.org/wiki/List_of_best-selling_manga",
+      "https://www.statista.com/statistics/1231844/highest-grossing-media-franchises-worldwide/",
+      "https://www.bing.com/search?q=Naruto+vs+One+Piece+storytelling+world-building+character+development+comparison+analysis",
+      "https://duckduckgo.com/?q=Naruto+vs+One+Piece+global+popularity+manga+sales+comparison+2024&ia=web"
+    ],
+    "confidence": "medium",
+    "gaps": [
+      "Exact real-time 2024 revenue for Naruto as it has slowed down significantly compared to One Piece.",
+      "Detailed breakdown of specific story arcs for comparison",
+      "Quantitative comparison data (e.g., ratings or awards specific to these categories)",
+      "Specific 2024/2025 streaming viewership numbers for comparison (e.g., Crunchyroll or Netflix minute-watched data).",
+      "Direct comparison of TV broadcast ratings in specific countries beyond Japan."
+    ]
+  },
+  "metadata": {
+    "status": "complete",
+    "planning_model": "gemini-3-pro-preview",
+    "browser_model": "gemini-3-flash-preview",
+    "num_workers": 3,
+    "turns_per_worker": 12,
+    "total_turns": 29,
+    "elapsed_seconds": 108.5,
+    "timestamp": "2026-02-27T21:45:40.308175+00:00"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "query": "Standard M6 bolt dimensions including head diameter and thread pitch",
+  "research_plan": "SUB-QUESTIONS:\n1. What is the standard coarse thread pitch for an M6 bolt?\n2. What are the common fine thread pitch options for an M6 bolt?\n3. What is the standard hex head width across flats (wrench size) for an M6 bolt according to ISO and DIN standards?\n4. What is the maximum head diameter (across corners) and head height for a standard M6 hex bolt?\n\nSEARCH QUERIES:\n- \"standard M6 bolt dimensions chart head size pitch\"\n- \"M6 metric thread pitch coarse vs fine table\"\n- \"ISO 4014 vs DIN 931 M6 bolt specifications\"\n- \"M6 hex head screw dimensions across flats pdf\"\n\nWEBSITES TO TRY:\n- https://www.engineeringtoolbox.com\n- https://www.mcmaster.com\n- https://www.fastenal.com\n\nDONE WHEN:\n- Confirmed standard coarse thread pitch (e.g., 1.0mm).\n- Confirmed standard hex head width across flats (e.g., 10mm).\n- Confirmed head height.\n- Data corroborated by 3+ independent engineering tables or supplier specifications.",
+  "findings": {
+    "summary": "No findings collected.",
+    "data_points": [],
+    "sources": [],
+    "confidence": "low",
+    "gaps": []
+  },
+  "metadata": {
+    "status": "incomplete",
+    "planning_model": "gemini-3-pro-preview",
+    "browser_model": "gemini-3-flash-preview",
+    "turns_used": 16,
+    "max_turns": 15,
+    "elapsed_seconds": 118.4,
+    "timestamp": "2026-02-27T15:34:16.453712+00:00"
+  }
+}

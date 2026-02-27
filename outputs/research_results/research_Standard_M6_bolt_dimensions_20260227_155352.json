@@ -1,0 +1,27 @@
+{
+  "query": " Standard M6 bolt dimensions",
+  "research_plan": "SUB-QUESTIONS:\n1. What is the standard coarse thread pitch for an M6 bolt?\n2. What are the specific head dimensions (width across flats and head height) for a standard ISO/DIN M6 hex bolt?\n3. What is the recommended clearance hole diameter for an M6 bolt?\n\nSEARCH QUERIES:\n- M6 metric bolt dimensions chart ISO 4017 DIN 933\n- M6 hex head bolt width across flats and height specifications\n- standard metric coarse thread pitch M6 table\n- mechanical properties and geometry of M6 fasteners\n\nBEST WEBSITES TO CHECK DIRECTLY:\n- https://www.engineeringtoolbox.com/\n- https://www.mcmaster.com/\n- https://www.engineersedge.com/\n\nDONE WHEN:\n- The standard thread pitch (e.g., 1.0mm) is confirmed.\n- The width across flats (typically 10mm) and head height are explicitly listed.\n- Dimensions are cross-referenced against 2-3 independent sources to ensure ISO/DIN consistency.",
+  "findings": {
+    "summary": "Research was initiated to find standard M6 bolt dimensions according to ISO/DIN standards. A technical data table from Brooks Forgings was located for ISO 4017 / DIN 933 fasteners, but the visible portion of the table started from M12. Due to turn limits, specific verified values for M6 (such as the 1.0mm pitch, 10mm width across flats, and 4mm head height typically associated with this size) could not be extracted and cross-referenced from the source pages within the allotted time.",
+    "data_points": [],
+    "sources": [
+      "https://brooksforgings.co.uk/technical-data/industrial-components/hexagon-bolts-and-set-screws/iso-4017-din-933-hexagon-bolts"
+    ],
+    "confidence": "low",
+    "gaps": [
+      "Standard coarse thread pitch for M6 bolt (expected 1.0mm)",
+      "Width across flats for M6 hex bolt (expected 10mm)",
+      "Head height for M6 hex bolt (expected 4mm)",
+      "Recommended clearance hole diameter for M6 bolt"
+    ]
+  },
+  "metadata": {
+    "status": "incomplete",
+    "planning_model": "gemini-3-pro-preview",
+    "browser_model": "gemini-3-flash-preview",
+    "turns_used": 19,
+    "max_turns": 20,
+    "elapsed_seconds": 146.5,
+    "timestamp": "2026-02-27T15:53:52.756782+00:00"
+  }
+}

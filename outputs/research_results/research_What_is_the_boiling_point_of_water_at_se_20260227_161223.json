@@ -1,0 +1,20 @@
+{
+  "query": "What is the boiling point of water at sea level?",
+  "research_plan": "SUB-QUESTIONS:\n1. Exact boiling point temperature of water at 1 atmosphere (101.325 kPa) in Celsius.\n2. Exact boiling point temperature of water at 1 atmosphere in Fahrenheit and Kelvin.\n3. Definition of standard atmospheric pressure used to define \"sea level\" conditions.\n\nSEARCH QUERIES (4 different phrasings, use technical terms):\n- \"standard boiling point water 1 atm temperature\"\n- \"water saturation temperature at 101.325 kPa\"\n- \"phase transition temperature H2O standard atmospheric pressure\"\n- \"thermodynamic properties of water boiling point sea level\"\n\nBEST WEBSITES TO CHECK DIRECTLY:\n- https://www.nist.gov\n- https://www.engineeringtoolbox.com\n- https://pubchem.ncbi.nlm.nih.gov\n\nDONE WHEN:\n- Confirmed boiling point values in Celsius, Fahrenheit, and Kelvin.\n- Verified the standard pressure definition (1 atm / 760 mmHg).\n- Data corroborated by 2-3 independent authoritative sources.",
+  "findings": {
+    "summary": "No findings.",
+    "data_points": [],
+    "sources": [],
+    "confidence": "low",
+    "gaps": []
+  },
+  "metadata": {
+    "status": "incomplete",
+    "planning_model": "gemini-3-pro-preview",
+    "browser_model": "gemini-3-flash-preview",
+    "turns_used": 4,
+    "max_turns": 8,
+    "elapsed_seconds": 33.8,
+    "timestamp": "2026-02-27T16:12:23.556722+00:00"
+  }
+}
