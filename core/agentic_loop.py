@@ -27,22 +27,18 @@ class AgenticLoop:
             # append screenshot
             history.append(types.Content(role='user', parts=[types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes)]))
 
-            # clean history
+            # clean history — remove old screenshots to stay within API limits
             screenshot_count = 0
-            # Iterate in reverse to prioritize recent state
             for content in reversed(history):
-                # Only the 'user' role sends the screenshots in your flow
                 if content.role == "user" and content.parts:
+                    parts_to_remove = []
                     for part in content.parts:
-                        # Check if this part contains image bytes (inline_data)
                         if part.inline_data is not None:
                             screenshot_count += 1
-                            
-                            # If we've already kept the allowed number of recent screenshots
                             if screenshot_count > MAX_SCREENSHOTS:
-                                # Wipe the bytes but keep the part structure so the 
-                                # history length/index remains consistent.
-                                part.inline_data = None            # send prompt + screenshot to model
+                                parts_to_remove.append(part)
+                    for part in parts_to_remove:
+                        content.parts.remove(part)
 
             # get response safely
             try:
@@ -139,7 +135,7 @@ class AgenticLoop:
                             f"Generating content failed after {max_retries} attempts.\n",
                             color="red",
                             )
-        raise
+                    raise
 
     def get_text(self, candidate: Candidate) -> Optional[str]:
         """Extracts the text from the candidate."""
