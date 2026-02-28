@@ -1,18 +1,20 @@
 """
-Research Agent
-So basically this is a browser bot that does research for you.
+Emmanuel's Research Agent
+========================
+so basically this is a browser bot that does research for you.
 you give it a question like "what are M6 bolt dimensions" and it
 literally opens chrome, goes to google, clicks links, reads pages,
 and comes back with actual data + the URLs where it found everything.
 
-i used two models:
+i use two models:
 - gemini 3 pro for planning (its smarter but costs more so i only call it once)
-- gemini 3 flash for actually driving the browser 
+- gemini 3 flash for actually driving the browser (way cheaper per turn)
 
 theres also a parallel mode where it opens like 3 browsers at once
 and each one researches a different part of the question. louis's
 manager wanted more websites covered so thats what this does.
 
+last updated: 27 feb 2026 - emmanuel
 """
 import json
 import time
@@ -25,6 +27,13 @@ from google import genai
 
 from core.agentic_loop import AgenticLoop, REPORT_FINDINGS_DECLARATION
 from core.browser_executor import BrowserExecutor
+
+# documentation agent runs after us to make proper reports
+try:
+    from agents.documentation_agent import DocumentationAgent
+    HAS_DOC_AGENT = True
+except ImportError:
+    HAS_DOC_AGENT = False
 
 
 # pro is the smart one, flash is the fast one.
@@ -136,7 +145,6 @@ Confidence levels:
 5. If you are running low on turns, call report_findings() with partial results.
 6. Be efficient — 2-3 good sources is enough for most facts.
 7. Prioritise structured data (tables, spec sheets) over prose.
-
 """
 
 # all json results and pdf reports go here
@@ -285,6 +293,7 @@ DONE WHEN:
         self._save(result)
         self._display(result)
         self.generate_pdf(result)
+        self._run_doc_agent(result)
         return result
 
     # ─── PARALLEL MODE ───────────────────────────────────────────────────
@@ -506,10 +515,23 @@ SUB-QUERY 3: [specific searchable question]"""
         self._save(result)
         self._display(result)
         self.generate_pdf(result)
+        self._run_doc_agent(result)
         return result
 
     # ─── SAVING + DISPLAY ────────────────────────────────────────────────
     # boring but necessary bits — save json, print to terminal, make pdf
+
+    def _run_doc_agent(self, result):
+        """hand off to the documentation agent for proper reports."""
+        if not HAS_DOC_AGENT:
+            return
+        try:
+            doc_agent = DocumentationAgent(self.client)
+            paths = doc_agent.generate(result)
+            print(f"[ResearchAgent] Documentation agent produced: {paths}")
+        except Exception as e:
+            # doc agent failing shouldnt kill the whole research
+            print(f"[ResearchAgent] Doc agent failed ({e}), raw results still saved")
 
     def _save(self, result):
         """dump the result dict to a json file in the outputs folder."""
@@ -697,7 +719,7 @@ SUB-QUERY 3: [specific searchable question]"""
             pdf.cell(0, 5, f"Single: {m.get('turns_used','?')} turns, {m['elapsed_seconds']}s", new_x="LMARGIN", new_y="NEXT")
         pdf.cell(0, 5, f"Models: {m.get('planning_model','')} + {m.get('browser_model','')}", new_x="LMARGIN", new_y="NEXT")
 
-        # --- saving  the pdf ---
+        # --- save the pdf ---
         if filepath is None:
             safe = "".join(c if c.isalnum() or c == " " else "_" for c in query[:40])
             filepath = OUTPUT_DIR / f"report_{safe.strip().replace(' ','_')}_{datetime.now():%Y%m%d_%H%M%S}.pdf"
