@@ -1,11 +1,41 @@
+"""
+Main entry point — run the planner with a user request.
+
+Usage:
+    python main.py                          # interactive mode
+    python main.py "Create a 30mm cube"     # direct CAD task
+    python main.py "Research M6 bolt specs" # direct research task
+"""
+import sys
+
 from google import genai
 
-from core.agentic_loop import AgenticLoop
+from core.agentic_planner import Planner
 from core.desktop_executor import DesktopExecutor
 
-# Only run this block for Gemini Developer API
-client = genai.Client()
 
-agent_loop = AgenticLoop(client)
-d_exec = DesktopExecutor()
-agent_loop.agentic_loop('open free cad and tell me what you see', d_exec)
+def main():
+    client = genai.Client()
+    executor = DesktopExecutor()
+    planner = Planner(client, executor)
+
+    if len(sys.argv) > 1:
+        # Direct mode: pass the request as a CLI argument
+        request = " ".join(sys.argv[1:])
+        planner.run(request)
+    else:
+        # Interactive mode
+        print("Agentic Planner — type a request or 'quit' to exit\n")
+        while True:
+            try:
+                request = input(">>> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nBye.")
+                break
+            if not request or request.lower() in ("quit", "exit", "q"):
+                break
+            planner.run(request)
+
+
+if __name__ == "__main__":
+    main()

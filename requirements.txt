@@ -1,2 +1,6 @@
 google-genai
 termcolor
+pyyaml
+playwright
+fpdf2
+python-docx

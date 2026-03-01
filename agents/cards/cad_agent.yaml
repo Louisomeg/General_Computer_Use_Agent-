@@ -1,0 +1,22 @@
+# Agent Card — CAD Agent (A2A-compatible format)
+# Used for agent discovery. The planner or external agents can read this
+# to understand what the CAD agent can do before sending it tasks.
+
+name: cad_agent
+description: Creates and modifies 3D CAD models in FreeCAD from specifications
+version: "0.1.0"
+class: agents.cad_agent.CADAgent
+
+capabilities:
+  streaming: false
+  state_tracking: true
+
+skills:
+  - name: create_3d_part
+    description: Design and model a 3D mechanical part from a description and dimensions
+
+  - name: modify_part
+    description: Modify an existing part — add features, change dimensions, apply operations
+
+  - name: create_sketch
+    description: Create a 2D sketch with geometry and constraints on a given plane

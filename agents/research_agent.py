@@ -25,8 +25,10 @@ from typing import Optional
 
 from google import genai
 
+from agents.registry import register
 from core.agentic_loop import AgenticLoop, REPORT_FINDINGS_DECLARATION
 from core.browser_executor import BrowserExecutor
+from core.models import Task, TaskStatus
 
 # documentation agent runs after us to make proper reports
 try:
@@ -151,6 +153,7 @@ Confidence levels:
 OUTPUT_DIR = Path("outputs/research_results")
 
 
+@register("research")
 class ResearchAgent:
     """
     the main agent. give it a question, it goes and browses for you.
@@ -158,12 +161,32 @@ class ResearchAgent:
     normal:   agent.run("M6 bolt dimensions", max_turns=20)
     parallel: agent.run_parallel("drone materials", num_workers=3)
     pdf only: agent.generate_pdf()  # uses last run's results
+
+    via registry:
+        agent = get_agent("research", client=client)
+        task = Task(description="Find M6 bolt dimensions")
+        agent.execute(task)
     """
 
     def __init__(self, client: genai.Client):
         self.client = client
         self.research_plan = None   # gets set when we call plan_research
         self.findings = None        # gets set after the browser does its thing
+
+    def execute(self, task: Task) -> Task:
+        """Standard agent interface — run research from a Task object."""
+        task.status = TaskStatus.WORKING
+        try:
+            max_turns = task.params.get("max_turns", 20)
+            headless = task.params.get("headless", False)
+            result = self.run(task.description, max_turns=max_turns, headless=headless)
+            task.complete(
+                result=result["findings"].get("summary", "Research complete"),
+                artifacts=[result],
+            )
+        except Exception as e:
+            task.fail(error=str(e))
+        return task
 
     # ─── PLANNING ────────────────────────────────────────────────────────
     # this part is cheap — just one text call to pro, no browser involved.
