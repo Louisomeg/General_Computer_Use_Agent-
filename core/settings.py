@@ -6,11 +6,13 @@
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
 
-# Model-optimal screenshot resolution (Google's recommendation for computer-use)
-# The model outputs 0-999 normalized coords regardless of image size, but accuracy
-# is best at the resolution it was trained on: 1440x900.
-MODEL_SCREEN_WIDTH = 1440
-MODEL_SCREEN_HEIGHT = 900
+# Model-optimal screenshot resolution for computer-use.
+# IMPORTANT: Must maintain the same aspect ratio as the native screen (16:9)
+# to avoid distorting the image the model sees. A distorted image makes small
+# targets (menus, toolbar icons) harder to localize accurately.
+# Native is 1920x1080 (16:9) → use 1280x720 (16:9) as the resized target.
+MODEL_SCREEN_WIDTH = 1280
+MODEL_SCREEN_HEIGHT = 720
 
 # Timing constants (seconds unless noted)
 ACTION_DELAY = 0.5              # Pause after each action for UI settling
@@ -38,7 +40,7 @@ EXCLUDED_PREDEFINED_FUNCTIONS = [
 # =============================================================================
 
 SYSTEM_INSTRUCTION = f"""You are an engineering desktop agent operating on an Ubuntu Linux machine
-with a GNOME desktop environment. Your screen resolution is {SCREEN_WIDTH}x{SCREEN_HEIGHT}.
+with a GNOME desktop environment.
 
 ## Environment Details
 - OS: Ubuntu Linux with GNOME Shell
@@ -125,10 +127,12 @@ moving to the next step. Never skip steps or assume something worked without che
 ## FreeCAD-Specific
 - FreeCAD has: menu bar (top), toolbars, 3D viewport (center),
   model tree (left panel), properties panel (bottom-left), Python console (bottom).
-- Use the MENU BAR (File, Edit, View, Part Design, Sketcher, etc.) by clicking on it.
-- Use TOOLBAR BUTTONS by clicking on them — hover first if unsure what a button does.
-- Only use freecad_shortcut for sketcher geometry tools (G+L, G+R, G+C, etc.)
-  and constraints that have no visible button.
+- Use the MENU BAR (File, Edit, View, Part Design, Sketch, etc.) by clicking on the
+  menu TEXT. Menus have large labels that are easy to click accurately.
+- AVOID clicking small toolbar icons — they are ~24px wide and easy to misclick.
+  Use menus or keyboard shortcuts instead.
+- Use freecad_shortcut for sketcher geometry tools (G+L, G+R, G+C, etc.),
+  Part Design operations (P for Pad, Q for Pocket), and constraints.
 - When FreeCAD first opens, you may see a Start page. Click "Create New..." to begin.
 
 ## Important Rules

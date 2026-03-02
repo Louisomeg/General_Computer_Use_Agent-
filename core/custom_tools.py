@@ -1,3 +1,5 @@
+from typing import Optional, Set
+
 from google.genai import types
 
 from core.settings import (
@@ -18,20 +20,37 @@ def _build_shortcut_description(shortcuts: dict, prefix: str) -> str:
     return "\n".join(lines)
 
 
-def get_custom_declarations() -> list:
+def get_custom_declarations(
+    ubuntu_filter: Optional[Set[str]] = None,
+    freecad_filter: Optional[Set[str]] = None,
+) -> list:
     """Build and return the 5 custom FunctionDeclaration objects for Gemini.
 
     These are passed alongside the computer_use Tool so Gemini knows
     what custom functions it can call beyond the 13 predefined ones.
+
+    Args:
+        ubuntu_filter: If provided, only include these Ubuntu shortcut names.
+                       If None, include ALL Ubuntu shortcuts.
+        freecad_filter: If provided, only include these FreeCAD shortcut names.
+                        If None, include ALL FreeCAD shortcuts.
     """
+    # Apply optional filters to reduce token overhead per turn
+    ubuntu = UBUNTU_SHORTCUTS
+    if ubuntu_filter is not None:
+        ubuntu = {k: v for k, v in UBUNTU_SHORTCUTS.items() if k in ubuntu_filter}
+
+    freecad = FREECAD_SHORTCUTS
+    if freecad_filter is not None:
+        freecad = {k: v for k, v in FREECAD_SHORTCUTS.items() if k in freecad_filter}
 
     system_shortcut_desc = _build_shortcut_description(
-        UBUNTU_SHORTCUTS,
+        ubuntu,
         "Execute an Ubuntu desktop keyboard shortcut by name.",
     )
 
     freecad_shortcut_desc = _build_shortcut_description(
-        FREECAD_SHORTCUTS,
+        freecad,
         "Execute a FreeCAD keyboard shortcut by name. "
         "Use this for FreeCAD-specific operations like view changes, "
         "sketcher tools, constraints, and Part Design commands.",

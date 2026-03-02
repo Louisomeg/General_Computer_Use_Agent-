@@ -83,6 +83,7 @@ class AgenticLoop:
         extra_declarations: Optional[List[types.FunctionDeclaration]] = None,
         max_turns: int = 0,
         use_browser_environment: bool = False,
+        custom_declarations: Optional[List[types.FunctionDeclaration]] = None,
     ):
         self.client = client
         self.model_name = model_name
@@ -91,6 +92,9 @@ class AgenticLoop:
         self.extra_declarations = extra_declarations or []
         self.max_turns = max_turns
         self.use_browser_environment = use_browser_environment
+        # If custom_declarations is provided, it replaces get_custom_declarations().
+        # This lets agents pass filtered shortcut sets to reduce per-turn overhead.
+        self.custom_declarations = custom_declarations
         self._turn_count = 0
 
     @property
@@ -252,18 +256,19 @@ class AgenticLoop:
                 # Inject turns-remaining warning if approaching budget
                 if self.max_turns > 0:
                     remaining = self.max_turns - self._turn_count
-                    if 0 < remaining <= 3:
+                    if 0 < remaining <= 5:
                         warning = (
                             f"WARNING: You have {remaining} turns left. "
                             f"Wrap up your current work and finish the task NOW. "
-                            f"Do not start any new operations — complete or report immediately."
+                            f"Call task_complete() with a summary of what you accomplished. "
+                            f"Do not start any new operations."
                         )
                         response_parts.append(types.Part.from_text(text=warning))
                         print(f"  [!] Turn warning injected: {remaining} turns left")
                     elif remaining == 0:
                         warning = (
-                            "FINAL TURN. You MUST finish right now. "
-                            "Complete the task with whatever progress you have made."
+                            "FINAL TURN. You MUST call task_complete() right now. "
+                            "Summarize what was accomplished and what failed."
                         )
                         response_parts.append(types.Part.from_text(text=warning))
                         print(f"  [!] FINAL TURN warning injected")
@@ -278,7 +283,8 @@ class AgenticLoop:
                 break
 
     def config(self):
-        all_declarations = get_custom_declarations() + self.extra_declarations
+        base = self.custom_declarations if self.custom_declarations is not None else get_custom_declarations()
+        all_declarations = base + self.extra_declarations
         if self.use_browser_environment:
             cu_tool = types.Tool(
                 computer_use=types.ComputerUse(
