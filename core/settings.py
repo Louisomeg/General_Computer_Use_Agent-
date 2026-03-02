@@ -15,13 +15,13 @@ MODEL_SCREEN_WIDTH = 1280
 MODEL_SCREEN_HEIGHT = 720
 
 # Timing constants (seconds unless noted)
-ACTION_DELAY = 0.5              # Pause after each action for UI settling
+ACTION_DELAY = 1.0              # Pause after each action for UI settling (FreeCAD is slow)
 TYPING_DELAY = 50               # Milliseconds between keystrokes (xdotool --delay)
-SHORTCUT_DELAY = 0.5            # Pause after a keyboard shortcut
-FREECAD_SEQUENCE_DELAY = 0.15   # Pause between keys in a FreeCAD two-key sequence
-APP_LAUNCH_DELAY = 2.0          # Pause after launching an application
+SHORTCUT_DELAY = 0.8            # Pause after a keyboard shortcut (FreeCAD needs time to react)
+FREECAD_SEQUENCE_DELAY = 0.3    # Pause between keys in a FreeCAD two-key sequence (e.g. G→R)
+APP_LAUNCH_DELAY = 3.0          # Pause after launching an application
 SEARCH_TYPE_DELAY = 2.0         # Pause after typing in Ubuntu launcher (needs time to index)
-CLICK_DELAY = 0.3               # Pause after a mouse click
+CLICK_DELAY = 0.5               # Pause after a mouse click (FreeCAD UI updates are slow)
 
 # Screenshot
 SCREENSHOT_PATH = "/tmp/agent_screenshot.png"
@@ -66,11 +66,14 @@ UI elements to accomplish your goal. This is how a human uses a computer.
 Keyboard shortcuts (system_shortcut, freecad_shortcut, key_combination) should ONLY
 be used in these specific cases:
 - open_application — to launch apps (this is a helper, use it first to open apps)
-- freecad_shortcut — for FreeCAD-specific tools that have no clickable button
-  (e.g. sketcher geometry shortcuts like G+L for line)
-- key_combination — for text editing (Ctrl+A, Ctrl+C, Ctrl+V, Enter, Escape)
-- system_shortcut("close_window") — only when you need to close a window and
-  cannot see the X button
+- freecad_shortcut("edit_undo") — Ctrl+Z to undo mistakes in FreeCAD
+- key_combination("escape") — to cancel the active tool in FreeCAD
+- key_combination — for text editing (Ctrl+A, Ctrl+C, Ctrl+V, Enter)
+- system_shortcut("minimize_window") — to minimize the terminal at startup
+
+For FreeCAD: use the MENU BAR for ALL operations (geometry, constraints, pad, pocket,
+close sketch, view changes). Menus are reliable. Keyboard shortcuts are NOT because
+they depend on which panel has focus.
 
 Do NOT use system_shortcut for navigation (switching windows, activities overview, etc.).
 Instead, look at the screenshot and:
@@ -127,12 +130,14 @@ moving to the next step. Never skip steps or assume something worked without che
 ## FreeCAD-Specific
 - FreeCAD has: menu bar (top), toolbars, 3D viewport (center),
   model tree (left panel), properties panel (bottom-left), Python console (bottom).
-- Use the MENU BAR (File, Edit, View, Part Design, Sketch, etc.) by clicking on the
-  menu TEXT. Menus have large labels that are easy to click accurately.
+- ALWAYS use the MENU BAR for ALL FreeCAD operations. Click the menu TEXT
+  (e.g. "Sketch", "Part Design", "View") — menus are large and easy to click.
 - AVOID clicking small toolbar icons — they are ~24px wide and easy to misclick.
-  Use menus or keyboard shortcuts instead.
-- Use freecad_shortcut for sketcher geometry tools (G+L, G+R, G+C, etc.),
-  Part Design operations (P for Pad, Q for Pocket), and constraints.
+- AVOID keyboard shortcuts in FreeCAD — they depend on which panel has keyboard
+  focus and can silently fail. Only use Escape (cancel tool) and Ctrl+Z (undo).
+- Use menus for everything: sketcher tools (Sketch → Sketcher geometries),
+  constraints (Sketch → Sketcher constraints), Part Design operations
+  (Part Design → Pad, Pocket, Create sketch), view changes (View menu).
 - When FreeCAD first opens, you may see a Start page. Click "Create New..." to begin.
 
 ## Important Rules
@@ -693,14 +698,18 @@ FREECAD_SHORTCUTS = {
     },
 
     # ---- Part Design ----
-    "partdesign_pad": {
-        "keys": "p",
-        "description": "Pad (extrude) the selected sketch into a solid",
-    },
-    "partdesign_pocket": {
-        "keys": "q",
-        "description": "Create a pocket (cut) from the selected sketch",
-    },
+    # NOTE: Pad and Pocket have NO default keyboard shortcut in FreeCAD 1.0.
+    # They must be accessed via the menu: Part Design → Pad / Pocket.
+    # These entries are kept but DISABLED — do NOT add them to agent shortcut
+    # filters or they will silently do nothing when called.
+    # "partdesign_pad": {
+    #     "keys": "p",
+    #     "description": "Pad (extrude) the selected sketch into a solid",
+    # },
+    # "partdesign_pocket": {
+    #     "keys": "q",
+    #     "description": "Create a pocket (cut) from the selected sketch",
+    # },
 
     # ---- Sketcher Geometry (G-prefix sequences) ----
     "sketcher_line": {
@@ -778,7 +787,7 @@ FREECAD_SHORTCUTS = {
         "description": "Constrain two points to be symmetric about a line",
     },
     "sketcher_constrain_parallel": {
-        "keys": "shift+p",
+        "keys": "p",
         "description": "Constrain two lines to be parallel",
     },
     "sketcher_constrain_distance": {
@@ -802,8 +811,12 @@ FREECAD_SHORTCUTS = {
         "description": "Block an edge from moving (press K then B)",
     },
     "sketcher_constrain_horizontal_distance": {
-        "keys": "i",
+        "keys": "l",
         "description": "Set a horizontal distance constraint",
+    },
+    "sketcher_constrain_vertical_distance": {
+        "keys": "i",
+        "description": "Set a vertical distance constraint",
     },
     "sketcher_constrain_point_on_object": {
         "keys": "o",

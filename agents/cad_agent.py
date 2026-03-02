@@ -39,26 +39,21 @@ CAD_UBUNTU_SHORTCUTS = {
 }
 
 CAD_FREECAD_SHORTCUTS = {
-    # File / Edit
+    # File / Edit — standard Ctrl+key combos, always work regardless of focus
     "file_new", "file_save", "file_save_as", "file_export",
     "edit_undo", "edit_redo", "cancel_operation", "toggle_visibility",
-    # View
+    # View — simple single-key presses, useful after exiting sketcher
     "view_isometric", "view_front", "view_top", "view_right",
     "view_fit_all", "view_fit_selection",
     "view_orthographic", "view_perspective",
-    # Part Design
-    "partdesign_pad", "partdesign_pocket",
-    # Sketcher Geometry
-    "sketcher_line", "sketcher_rectangle", "sketcher_circle",
-    "sketcher_arc", "sketcher_polyline", "sketcher_trim",
-    "sketcher_external_geometry", "sketcher_construction_mode",
-    # Sketcher Constraints
-    "sketcher_constrain_horizontal", "sketcher_constrain_vertical",
-    "sketcher_constrain_coincident", "sketcher_constrain_equal",
-    "sketcher_constrain_perpendicular", "sketcher_constrain_symmetric",
-    "sketcher_constrain_distance", "sketcher_constrain_radius",
-    "sketcher_constrain_angle",
-    "sketcher_close",
+    # --------------------------------------------------------------------------
+    # ALL sketcher geometry and constraint shortcuts have been REMOVED.
+    # The model uses the Sketch menu instead — menus are visible, verifiable,
+    # and don't depend on keyboard focus or context. This eliminates silent
+    # failures from focus being on the wrong panel or key collisions.
+    # Pad/Pocket also have no default shortcut — use Part Design menu.
+    # Close sketch — use Sketch menu → Close sketch (not Escape).
+    # --------------------------------------------------------------------------
 }
 
 
@@ -106,37 +101,67 @@ IMMEDIATELY minimize it with system_shortcut("minimize_window") as your FIRST ac
 Do NOT try to close, read, or interact with the terminal — just minimize it and move on.
 After minimizing, focus EXCLUSIVELY on FreeCAD for the rest of the task.
 
-## Using Keyboard Shortcuts Instead of Clicking
-FreeCAD toolbar icons are TINY (~24px) and packed tightly together.
-Clicking the wrong icon causes catastrophic operations that are hard to recover from.
+## PRIMARY METHOD: Use FreeCAD Menus for ALL Operations
+FreeCAD toolbar icons are TINY (~24px) and packed tightly together — NEVER click them.
+Keyboard shortcuts are UNRELIABLE because they depend on which panel has keyboard focus,
+and some keys mean different things in different contexts (e.g. V = vertical constraint
+inside sketcher, but V = start of view command outside sketcher).
 
-RULES:
-- Use freecad_shortcut("partdesign_pad") (key P) instead of clicking Pad toolbar icon
-- Use freecad_shortcut("partdesign_pocket") (key Q) instead of clicking Pocket icon
-- Use freecad_shortcut("sketcher_rectangle") (G+R) for rectangle, etc.
-- Use freecad_shortcut("sketcher_constrain_distance") (K+D) to add a distance constraint
-- The ONLY safe clicks are large buttons like "OK" / "Close" in the Tasks panel (left side),
-  and items in the model tree (left panel).
-- For operations with no shortcut (Fillet, Chamfer, New Sketch), use the MENU BAR.
-  Click the menu TEXT (e.g. "Part Design" text), then click the dropdown item.
+ALWAYS use the MENU BAR at the top of the window for ALL FreeCAD operations:
+
+- Sketcher geometry tools: "Sketch" menu → "Sketcher geometries" → choose tool
+  (Rectangle, Line, Circle, Arc, Polyline, etc.)
+- Sketcher constraints: "Sketch" menu → "Sketcher constraints" → choose constraint
+  (Constrain distance, Constrain horizontal, Constrain equal, etc.)
+- Close sketch: "Sketch" menu → "Close sketch"
+- Pad / Pocket / Fillet: "Part Design" menu → choose operation
+- Create sketch / Create body: "Part Design" menu → choose item
+  NOTE: In FreeCAD 1.0, the menu item is "Create sketch" (NOT "New Sketch").
+- View operations: "View" menu → "Standard views" → choose view
+
+HOW TO NAVIGATE SUBMENUS:
+1. Click the menu name in the menu bar (e.g. "Sketch")
+2. A dropdown appears. Hover over the submenu item (e.g. "Sketcher geometries")
+3. A second dropdown appears to the right. Click the specific tool (e.g. "Rectangle")
+If the submenu doesn't appear, try clicking on the submenu item instead of hovering.
+
+THE ONLY KEYBOARD ACTIONS YOU SHOULD USE:
+- key_combination("escape") — cancel an active tool (e.g. after drawing a rectangle)
+- freecad_shortcut("edit_undo") — Ctrl+Z to undo mistakes (press MULTIPLE TIMES)
+- Typing values into dialog fields (e.g. "30 mm" in a constraint dialog)
+- If Escape or Undo seems to not work, click once in the 3D viewport first, then retry.
+
+Safe mouse clicks:
+- Drawing geometry (clicking corner points for rectangle, etc.)
+- Selecting edges/faces for constraints
+- Clicking "OK" / "Close" buttons in the Tasks panel (left side)
+- Clicking items in the model tree (left panel)
+- Clicking menu items in the menu bar
 
 ## How FreeCAD's Rectangle Tool Works (IMPORTANT)
 The rectangle tool uses a TWO-CLICK workflow:
-1. freecad_shortcut("sketcher_rectangle") — activates the tool
+1. Activate the tool via: "Sketch" menu → "Sketcher geometries" → "Rectangle"
 2. Click the FIRST corner point in the viewport
 3. Click the SECOND corner point (the opposite diagonal corner)
 4. The rectangle is now created between those two points
-5. Press Escape to exit the rectangle tool
+5. Press key_combination("escape") to exit the rectangle tool
 
 AFTER the rectangle is drawn, add dimension constraints:
 - Click on one HORIZONTAL edge of the rectangle (click at the midpoint of the line)
-- Use freecad_shortcut("sketcher_constrain_distance") (K then D)
-- A dialog appears with a number field — type the dimension value, press Enter
+- Activate constraint via: "Sketch" menu → "Sketcher constraints" → "Constrain distance"
+- A dialog appears with a number field — type the value WITH units, e.g. "30 mm"
+  (always include " mm" after the number — FreeCAD may default to µm otherwise)
+- Click the OK button in the dialog to confirm (do NOT just press Enter)
 - Repeat for one VERTICAL edge
 
 IMPORTANT: Draw the rectangle AWAY from the center origin (avoid the area where
 the red X-axis and green Y-axis lines cross). Place both clicks in the upper-left
 area of the viewport so edges don't overlap with axis lines.
+
+## Closing the Sketch — CRITICAL
+Do NOT rely on pressing Escape to close the sketch. Escape only cancels the active tool.
+INSTEAD: use the menu: "Sketch" → "Close sketch". This is 100% reliable.
+ALTERNATIVE: click the "Close" button in the Tasks panel (left side).
 
 ## Error Recovery — CRITICAL RULES
 - NEVER use the Delete key. It permanently removes the WRONG thing.
@@ -383,6 +408,11 @@ class CADAgent:
 
             "2. Check if FreeCAD is open.\n"
             "   If YES: click on its window in the taskbar to bring it to focus.\n"
+            "     IMPORTANT: If FreeCAD already has a document open with existing work\n"
+            "     (you see shapes in the viewport or items in the model tree besides\n"
+            "     the default empty state), create a NEW document first:\n"
+            "     freecad_shortcut(\"file_new\") (Ctrl+N). This gives you a clean start.\n"
+            "     Do NOT try to modify or interact with existing geometry.\n"
             "   If NO: use open_application(\"FreeCAD\"), then wait_5_seconds.\n\n"
 
             "3. Check if the Part Design workbench is active.\n"
@@ -403,44 +433,75 @@ class CADAgent:
             "5. Create a new sketch on the XY plane:\n"
             "   PREREQUISITE CHECK: Is \"Body\" selected/highlighted in the model tree?\n"
             "   If not, click on \"Body\" in the model tree first.\n"
-            "   Then: click the \"Part Design\" text in the MENU BAR, then click \"New Sketch\".\n"
+            "   Then: click the \"Part Design\" text in the MENU BAR at the top of the window.\n"
+            "   In the dropdown, look for \"Create sketch\" (NOT \"New Sketch\" — FreeCAD 1.0\n"
+            "   uses the name \"Create sketch\"). Click it.\n"
+            "   ALTERNATIVE: If you cannot find it in the Part Design menu, look in the\n"
+            "   Tasks panel (left side) under \"Helper tools\" for \"Create sketch\".\n"
             "   When the plane selector dialog appears, click \"XY_Plane\" then click OK.\n"
             "   Verify: you should see the sketcher grid with red/green axis lines.\n"
-            "   Then: freecad_shortcut(\"view_fit_all\") to zoom the view properly.\n\n"
+            "   NOTE: While inside the sketcher, the menu bar will show a \"Sketch\" menu.\n"
+            "   Use this menu for ALL sketcher operations (geometry, constraints, close).\n\n"
 
             "6. Draw the rectangle (TWO clicks, then add constraints):\n"
-            "   a. freecad_shortcut(\"sketcher_rectangle\") to activate the rectangle tool.\n"
+            "   a. Activate the rectangle tool via the MENU:\n"
+            "      Click the \"Sketch\" text in the MENU BAR at the top of the window.\n"
+            "      In the dropdown, hover over \"Sketcher geometries\" (a submenu arrow appears).\n"
+            "      In the submenu that opens to the right, click \"Rectangle\".\n"
+            "      If the submenu does not appear, try clicking \"Sketcher geometries\" instead.\n"
             "   b. Click the FIRST corner in the upper-left area of the viewport (around x=250, y=300).\n"
             "      IMPORTANT: stay AWAY from the center where the red and green axis lines cross.\n"
             "   c. Click the SECOND corner, offset down-right from the first (around x=450, y=500).\n"
             "      This creates an approximate rectangle. Exact size does not matter yet.\n"
             "   d. Press key_combination(\"escape\") to exit the rectangle tool.\n"
-            "   e. Now add a WIDTH constraint: click on one HORIZONTAL edge of the rectangle\n"
-            "      (click at the midpoint of the line, not near a corner).\n"
-            "      Then: freecad_shortcut(\"sketcher_constrain_distance\") (K then D).\n"
-            "      A dimension dialog appears — type the width value (e.g. \"30\"), press Enter.\n"
-            "   f. Add a HEIGHT constraint: click on one VERTICAL edge of the rectangle.\n"
-            "      Then: freecad_shortcut(\"sketcher_constrain_distance\") again.\n"
-            "      Type the height value (e.g. \"30\"), press Enter.\n"
+            "   e. Now add a WIDTH constraint:\n"
+            "      Click on one HORIZONTAL edge of the rectangle (click at the midpoint\n"
+            "      of the line, not near a corner).\n"
+            "      Then activate the distance constraint via the MENU:\n"
+            "      Click \"Sketch\" in the MENU BAR → hover over \"Sketcher constraints\" →\n"
+            "      click \"Constrain distance\" in the submenu.\n"
+            "      A dimension dialog appears with a number input field.\n"
+            "      IMPORTANT — UNIT HANDLING: Always type the number WITH the unit, e.g.\n"
+            "      type \"30 mm\" (with the space before mm), NOT just \"30\".\n"
+            "      FreeCAD may display a different default unit (like µm), so always\n"
+            "      include \" mm\" after the number to ensure millimeters.\n"
+            "      After typing, click the \"OK\" button in the dialog (do NOT press Enter).\n"
+            "   f. Add a HEIGHT constraint:\n"
+            "      Click on one VERTICAL edge of the rectangle.\n"
+            "      Then activate the distance constraint via the MENU again:\n"
+            "      Click \"Sketch\" → hover \"Sketcher constraints\" → click \"Constrain distance\".\n"
+            "      Type the height value with unit (e.g. \"30 mm\"), then click OK.\n"
             "   Verify: the rectangle should resize to the exact dimensions.\n\n"
 
-            "7. Close the sketch: freecad_shortcut(\"sketcher_close\")\n"
-            "   Verify: you should see the rectangle outline in the 3D viewport.\n\n"
+            "7. Close the sketch:\n"
+            "   Do NOT press Escape to close the sketch — Escape only cancels the active tool.\n"
+            "   Instead: click the \"Sketch\" text in the MENU BAR, then click \"Close sketch\".\n"
+            "   ALTERNATIVE: click the \"Close\" button in the Tasks panel (left side).\n"
+            "   Verify: the menu bar should now show \"Part Design\" menus (not \"Sketch\" menus).\n"
+            "   You should see the rectangle outline in the 3D viewport.\n\n"
 
             "8. Pad (extrude) the sketch:\n"
-            "   Use freecad_shortcut(\"partdesign_pad\") (key P) to start the pad operation.\n"
-            "   A dialog will appear with a Length input field.\n"
-            "   Click the Length field, clear it, type the depth value (e.g. \"30\").\n"
+            "   Click \"Part Design\" in the MENU BAR at the top, then click \"Pad\" in the dropdown.\n"
+            "   A dialog will appear in the Tasks panel (left side) with a Length input field.\n"
+            "   Click the Length field, clear it, type the depth value WITH unit (e.g. \"30 mm\").\n"
             "   Click OK to apply the pad.\n"
-            "   Then: freecad_shortcut(\"view_fit_all\") to see the full 3D solid.\n"
+            "   Then zoom to fit: click \"View\" in the MENU BAR → click \"Standard views\" →\n"
+            "   click \"Fit All\" to see the full 3D solid.\n"
             "   Verify: you should see a 3D solid in the viewport.\n\n"
 
             "9. Call task_complete() with a summary of what was built.\n\n"
 
             "CRITICAL RULES:\n"
             "- NEVER use the Delete key. Use freecad_shortcut(\"edit_undo\") to fix mistakes.\n"
-            "- Use KEYBOARD SHORTCUTS for Pad (P), Pocket (Q), sketcher tools (G+R, G+L, etc.)\n"
-            "- Use the MENU BAR only for operations that have no shortcut (New Sketch, Fillet, etc.)\n"
+            "- Use the MENU BAR for ALL FreeCAD operations:\n"
+            "  * Sketch menu → Sketcher geometries (for Rectangle, Line, Circle, etc.)\n"
+            "  * Sketch menu → Sketcher constraints (for Constrain distance, etc.)\n"
+            "  * Sketch menu → Close sketch\n"
+            "  * Part Design menu → Pad, Pocket, Create sketch, Create body\n"
+            "  * View menu → Standard views → Fit All\n"
+            "- The ONLY keyboard actions: Escape (cancel tool), Ctrl+Z (undo), typing in dialogs.\n"
+            "- Do NOT use keyboard shortcuts for geometry tools or constraints — use menus.\n"
+            "- Close sketch via Sketch menu → Close sketch (NOT by pressing Escape).\n"
             "- If you trigger a wrong tool: Escape, then Undo multiple times.\n"
             "- Draw shapes AWAY from the origin center to avoid axis selection problems.\n"
             "- If a step fails 3 times, call task_complete() with what went wrong."

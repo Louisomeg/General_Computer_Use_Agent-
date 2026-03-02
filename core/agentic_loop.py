@@ -174,9 +174,42 @@ class AgenticLoop:
             except Exception as e:
                 print(e)
                 break
+
+            # Handle empty responses (no candidates) — retry with a fresh
+            # screenshot instead of crashing.  This can happen transiently
+            # due to content-safety filters or API hiccups.
             if not response.candidates:
-                print("Response has no candidates!")
-                raise ValueError("Empty response")
+                self._empty_response_retries = getattr(
+                    self, "_empty_response_retries", 0
+                ) + 1
+                if self._empty_response_retries >= 3:
+                    termcolor.cprint(
+                        "Empty response 3 times in a row — stopping.",
+                        color="red",
+                    )
+                    break
+                termcolor.cprint(
+                    f"Response has no candidates (attempt "
+                    f"{self._empty_response_retries}/3). "
+                    f"Retrying with fresh screenshot...",
+                    color="yellow",
+                )
+                time.sleep(2)  # Brief pause before retry
+                screenshot_bytes = self.screenshot_fn()
+                history.append(types.Content(role='user', parts=[
+                    types.Part.from_text(
+                        text="The previous request returned no response. "
+                             "Please look at the current screenshot and "
+                             "continue with the next action."
+                    ),
+                    types.Part.from_bytes(
+                        mime_type='image/png', data=screenshot_bytes
+                    ),
+                ]))
+                continue  # Re-enter the while loop (counts as a new turn)
+
+            # Reset empty-response counter on any successful response
+            self._empty_response_retries = 0
 
             candidate = response.candidates[0]
             if candidate.content:
@@ -247,6 +280,11 @@ class AgenticLoop:
             # This matches Google's reference implementation pattern:
             # function responses and the resulting screenshot go in ONE message.
             if response_parts:
+                # Wait for the UI to settle before capturing the screenshot.
+                # FreeCAD is a heavy Qt application and needs time after actions
+                # (creating bodies, entering sketcher, opening dialogs) before
+                # the screen accurately reflects the new state.
+                time.sleep(1.0)
                 # Capture screenshot AFTER executing all actions for this turn
                 screenshot_bytes = self.screenshot_fn()
                 response_parts.append(
