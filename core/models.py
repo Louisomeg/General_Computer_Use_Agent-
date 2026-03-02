@@ -102,3 +102,22 @@ def list_skills() -> list[str]:
     if not SKILLS_DIR.exists():
         return []
     return [p.stem for p in SKILLS_DIR.rglob("*.yaml")]
+
+
+def load_tutorial_skills() -> list[dict]:
+    """Load all skills marked with type: tutorial.
+
+    Tutorial skills contain general workflow knowledge (tips, troubleshooting,
+    step-by-step procedures) that applies to ANY FreeCAD task, not just the
+    specific part they demonstrate.  The CAD agent injects this knowledge
+    as reference material into every task prompt.
+    """
+    tutorials = []
+    if not SKILLS_DIR.exists():
+        return tutorials
+    for path in SKILLS_DIR.rglob("*.yaml"):
+        with open(path) as f:
+            skill = yaml.safe_load(f)
+            if skill and skill.get("type") == "tutorial":
+                tutorials.append(skill)
+    return tutorials

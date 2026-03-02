@@ -1,8 +1,11 @@
 name: bicycle_stem
+type: tutorial
 description: >
   Model a fully constrained, parametric 3D bicycle stem in FreeCAD 1.0.
   Covers sketching, constraints, parametric variables (VarSet), padding,
   pocketing, chamfers, mirroring, B-splines, and assembly with fasteners.
+  This skill also serves as a general FreeCAD tutorial — its tips,
+  troubleshooting, and workflow steps apply to any FreeCAD modeling task.
 difficulty: beginner
 source:
   title: "FreeCAD 1.0 Beginner Tutorial: Modeling a Bicycle Stem"

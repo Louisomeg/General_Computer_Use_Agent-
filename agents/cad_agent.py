@@ -17,7 +17,7 @@ from google.genai import Client, types
 from agents.registry import register
 from core.agentic_loop import AgenticLoop
 from core.executor import Executor
-from core.models import Task, TaskStatus, ProcedureState, load_skill
+from core.models import Task, TaskStatus, ProcedureState, load_skill, load_tutorial_skills
 from core.settings import SYSTEM_INSTRUCTION
 
 
@@ -247,13 +247,110 @@ class CADAgent:
         self.state = None
 
     def _execute_freeform(self, task: Task):
-        """Execute a task with no matching skill — pure prompt-driven."""
+        """Execute a task with no matching skill — pure prompt-driven.
+
+        Tutorial skills (type: tutorial) are always loaded and injected as
+        reference material so the model knows how FreeCAD works even for
+        tasks that don't match a specific skill by name.
+        """
         prompt = self._build_prompt(task)
-        print(f"[CAD Agent] No skill found, running freeform design")
+        print(f"[CAD Agent] No exact skill match, running freeform design with tutorial reference")
         self.loop.agentic_loop(prompt, self.executor)
+
+    # ------------------------------------------------------------------
+    # Tutorial reference builder
+    # ------------------------------------------------------------------
+
+    def _build_reference_from_tutorials(self) -> str:
+        """Build a FreeCAD reference section from all tutorial-type skills.
+
+        Tutorial skills contain general FreeCAD workflow knowledge (tips,
+        troubleshooting, step-by-step procedures) that is valuable for ANY
+        modeling task.  We extract the most useful parts and format them as
+        a compact reference section that gets injected into the task prompt.
+
+        For workflow steps we include:
+          - Steps 1-4 in full (setup, sketch, variables, pad) — universal
+          - Steps 5+ as one-line summaries (task-specific advanced ops)
+        """
+        tutorials = load_tutorial_skills()
+        if not tutorials:
+            return ""
+
+        parts = [
+            "\n## FreeCAD Reference Guide",
+            "(Extracted from tutorial skills — use this knowledge to guide your work)\n",
+        ]
+
+        for skill in tutorials:
+            # ── Tips ──────────────────────────────────────────────────
+            tips = skill.get("tips", [])
+            if tips:
+                parts.append("### General Tips")
+                for tip in tips:
+                    parts.append(f"- {tip}")
+                parts.append("")
+
+            # ── Troubleshooting ───────────────────────────────────────
+            troubleshooting = skill.get("troubleshooting", [])
+            if troubleshooting:
+                parts.append("### Common Problems & Solutions")
+                for item in troubleshooting:
+                    parts.append(f"- Problem: {item.get('problem', '')}")
+                    parts.append(f"  Solution: {item.get('solution', '')}")
+                parts.append("")
+
+            # ── Workflow steps ────────────────────────────────────────
+            steps = skill.get("steps", [])
+            if steps:
+                parts.append("### FreeCAD Workflow Reference")
+                parts.append(
+                    "These steps show the standard FreeCAD modeling workflow. "
+                    "Adapt the techniques to YOUR current task (ignore specific "
+                    "dimensions from the tutorial — use the task specs instead).\n"
+                )
+
+                for step in steps:
+                    step_num = step.get("step_number", "?")
+                    title = step.get("title", f"Step {step_num}")
+
+                    # Steps 1-4: full detail (universal workflow)
+                    if isinstance(step_num, int) and step_num <= 4:
+                        parts.append(f"**Step {step_num}: {title}**")
+                        for substep in step.get("substeps", []):
+                            parts.append(f"  - {substep}")
+                        if step.get("commands"):
+                            parts.append(f"  Commands: {step['commands']}")
+                        if step.get("gotchas"):
+                            parts.append(f"  Watch out: {step['gotchas']}")
+                        parts.append("")
+                    else:
+                        # Steps 5+: one-line summary (advanced/specific ops)
+                        desc = step.get("description", "").strip()
+                        # Take just the first sentence
+                        first_sentence = desc.split(".")[0] + "." if desc else ""
+                        parts.append(f"**Step {step_num}: {title}** — {first_sentence}")
+                        if step.get("gotchas"):
+                            parts.append(f"  Watch out: {step['gotchas']}")
+
+                parts.append("")
+
+        reference = "\n".join(parts)
+        print(f"[CAD Agent] Loaded tutorial reference ({len(reference)} chars)")
+        return reference
+
+    # ------------------------------------------------------------------
+    # Prompt builders
+    # ------------------------------------------------------------------
 
     def _build_prompt(self, task: Task) -> str:
         """Build a task prompt for the agentic loop (freeform mode).
+
+        Includes:
+        1. Task description and specifications
+        2. Tutorial reference material (tips, troubleshooting, workflow)
+        3. Step-by-step execution plan
+        4. Critical rules
 
         NOTE: CAD_SYSTEM_INSTRUCTION is the loop's system_instruction,
         so we only include the task-specific details here.
@@ -267,6 +364,11 @@ class CADAgent:
                 label = key.replace("_", " ").title()
                 parts.append(f"- {label}: {value}")
             parts.append("")
+
+        # Inject tutorial reference material (tips, troubleshooting, workflow)
+        reference = self._build_reference_from_tutorials()
+        if reference:
+            parts.append(reference)
 
         parts.append(
             "## Execution Plan\n"
