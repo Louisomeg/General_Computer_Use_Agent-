@@ -131,9 +131,62 @@ class DesktopExecutor(Executor):
 
         return {"success": True}
 
+    # Map of common lowercase key names the model sends → X11 keysym names
+    # xdotool requires proper keysym capitalization; lowercase variants are
+    # silently ignored (exit 0 + warning to stderr), which breaks the agent.
+    _KEY_ALIASES = {
+        "delete": "Delete",
+        "escape": "Escape",
+        "return": "Return",
+        "enter": "Return",
+        "backspace": "BackSpace",
+        "tab": "Tab",
+        "space": "space",
+        "shift": "Shift_L",
+        "ctrl": "Control_L",
+        "alt": "Alt_L",
+        "super": "Super_L",
+        "up": "Up",
+        "down": "Down",
+        "left": "Left",
+        "right": "Right",
+        "home": "Home",
+        "end": "End",
+        "pageup": "Page_Up",
+        "page_up": "Page_Up",
+        "pagedown": "Page_Down",
+        "page_down": "Page_Down",
+        "insert": "Insert",
+        "f1": "F1", "f2": "F2", "f3": "F3", "f4": "F4",
+        "f5": "F5", "f6": "F6", "f7": "F7", "f8": "F8",
+        "f9": "F9", "f10": "F10", "f11": "F11", "f12": "F12",
+    }
+
+    def _normalize_key(self, key: str) -> str:
+        """Normalize a single key name to its X11 keysym equivalent."""
+        return self._KEY_ALIASES.get(key.strip(), key.strip())
+
+    def _normalize_keys(self, keys: str) -> str:
+        """Normalize a key combination string like 'ctrl+delete' or 'shift+a'.
+
+        Handles '+' separated combos (ctrl+shift+delete) and single keys.
+        """
+        parts = keys.split("+")
+        normalized = [self._normalize_key(p) for p in parts]
+        return "+".join(normalized)
+
     def _key_combination(self, args: dict) -> dict:
-        keys = args["keys"]
-        subprocess.run(["xdotool", "key", keys], check=True)
+        keys = self._normalize_keys(args["keys"])
+        result = subprocess.run(
+            ["xdotool", "key", keys],
+            capture_output=True, text=True,
+        )
+        # xdotool returns 0 even when it can't find a key name, but prints
+        # a warning to stderr. Detect this and report the error to the model.
+        if result.returncode != 0:
+            return {"error": f"xdotool failed: {result.stderr.strip()}"}
+        if "No such key name" in result.stderr:
+            return {"error": f"Invalid key '{args['keys']}': {result.stderr.strip()}"}
         return {"success": True}
 
     def _scroll_at(self, args: dict) -> dict:

@@ -98,6 +98,18 @@ Do NOT keep performing actions after the main task is done.
   (e.g. sketcher_line, sketcher_rectangle, sketcher_circle) since these are
   two-key sequences that are faster than finding toolbar buttons.
 
+## Rectangle Auto-Constraints — IMPORTANT
+When you draw a rectangle with sketcher_rectangle, FreeCAD automatically adds
+positional constraints (fixing the corner coordinates). These will appear in the
+Constraints list but are NORMAL — do NOT try to delete them.
+Instead, just add your dimensional constraints on top:
+1. Select a horizontal edge → freecad_shortcut("sketcher_constrain_distance") → type the width
+2. Select a vertical edge → freecad_shortcut("sketcher_constrain_distance") → type the height
+The auto-constraints will turn green once the sketch is fully constrained.
+If constraints turn red (over-constrained), use freecad_shortcut("edit_undo") to undo
+your last constraint and try a different approach. Do NOT try to delete individual
+constraints by selecting them and pressing Delete — that rarely works in FreeCAD's UI.
+
 ## When Working with Measurements
 - All dimensions should match what was specified in the task.
 - Use constraint tools: freecad_shortcut("sketcher_constrain_distance") for distance (K+D),
@@ -260,20 +272,32 @@ class CADAgent:
             "## Execution Plan\n"
             "Follow the CAD Design Workflow from your system instructions:\n"
             "1. Minimize the terminal: system_shortcut(\"minimize_window\")\n"
-            "2. Check if FreeCAD is open. If not, open it.\n"
-            "3. Create a new document: freecad_shortcut(\"file_new\")\n"
-            "4. Open Part Design menu and click \"Create body\"\n"
+            "2. Check if FreeCAD is open. If not, use open_application(\"FreeCAD\"), then wait_5_seconds.\n"
+            "3. Look at the model tree (left panel). If an empty document already exists\n"
+            "   (like \"Unnamed\"), USE IT. Only use freecad_shortcut(\"file_new\") if\n"
+            "   there is no existing empty document.\n"
+            "4. Create a Body: click the Part Design menu in the menu bar, then click\n"
+            "   \"Create body\". If the sketcher dialog asks \"A body is needed\", click Yes.\n"
             "5. Create a new sketch on the XY plane:\n"
-            "   - In the model tree, click on \"XY_Plane\" under Origin\n"
-            "   - Then click the \"New Sketch\" button in the toolbar or Part Design menu\n"
+            "   - Look for a \"New Sketch\" button in the toolbar or Part Design menu\n"
+            "   - When the plane selector appears, select \"XY_Plane\" and click OK\n"
             "6. Draw the 2D profile using sketcher tools (freecad_shortcut)\n"
+            "   - For a cube/box: use freecad_shortcut(\"sketcher_rectangle\")\n"
+            "   - Click two points in the viewport to draw the rectangle\n"
+            "   - FreeCAD will auto-add positional constraints — this is NORMAL, do not delete them\n"
             "7. Add dimension constraints:\n"
-            "   - Select an edge, then use freecad_shortcut(\"sketcher_constrain_distance\")\n"
-            "   - Type the numeric value in the dialog and press Enter\n"
-            "8. Close the sketch: freecad_shortcut(\"sketcher_close\") or press Escape\n"
-            "9. Pad the sketch: select it and use Part Design > Pad, set the depth\n"
+            "   - Click on a horizontal edge of the rectangle to select it\n"
+            "   - Use freecad_shortcut(\"sketcher_constrain_distance\")\n"
+            "   - Type the numeric value (e.g. \"30\") in the dialog and press Enter\n"
+            "   - Repeat for a vertical edge\n"
+            "8. Close the sketch: freecad_shortcut(\"sketcher_close\")\n"
+            "9. Pad the sketch: look in the Part Design menu or toolbar for \"Pad\".\n"
+            "   Click it, set the length in the dialog, and click OK.\n"
             "10. Call task_complete() with a summary of what was built\n\n"
-            "IMPORTANT: Never create a new document to start over. Use Undo if you make a mistake."
+            "CRITICAL RULES:\n"
+            "- NEVER create a new document to start over. Use freecad_shortcut(\"edit_undo\") if you make a mistake.\n"
+            "- Do NOT try to delete auto-constraints from the rectangle. Just add dimensional constraints on top.\n"
+            "- If a key_combination fails, try using the equivalent freecad_shortcut instead."
         )
         return "\n".join(parts)
 

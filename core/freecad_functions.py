@@ -13,6 +13,35 @@ from core.settings import (
 )
 
 
+def _xdotool_key(key: str) -> dict:
+    """Send a single key via xdotool, capturing stderr to detect silent failures.
+
+    xdotool sometimes returns exit 0 but prints 'No such key name' to stderr,
+    which means the key was silently ignored. This helper detects that.
+    """
+    result = subprocess.run(
+        ["xdotool", "key", "--clearmodifiers", key],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return {"error": f"xdotool failed (rc={result.returncode}): {result.stderr.strip()}"}
+    if "No such key name" in result.stderr:
+        return {"error": f"xdotool rejected key '{key}': {result.stderr.strip()}"}
+    return {"success": True}
+
+
+def _get_active_window_name() -> str:
+    """Get the title of the currently focused window."""
+    try:
+        result = subprocess.run(
+            ["xdotool", "getactivewindow", "getwindowname"],
+            capture_output=True, text=True,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
 def execute_system_shortcut(shortcut_name: str) -> dict:
     """Execute an Ubuntu desktop keyboard shortcut by name.
 
@@ -24,15 +53,11 @@ def execute_system_shortcut(shortcut_name: str) -> dict:
     if not entry:
         return {"error": f"Unknown Ubuntu shortcut: {shortcut_name}"}
 
-    try:
-        subprocess.run(
-            ["xdotool", "key", "--clearmodifiers", entry["keys"]],
-            check=True,
-        )
-        time.sleep(SHORTCUT_DELAY)
-        return {"success": True}
-    except subprocess.CalledProcessError as e:
-        return {"error": str(e)}
+    result = _xdotool_key(entry["keys"])
+    if "error" in result:
+        return result
+    time.sleep(SHORTCUT_DELAY)
+    return {"success": True}
 
 
 def execute_freecad_shortcut(shortcut_name: str) -> dict:
@@ -40,30 +65,37 @@ def execute_freecad_shortcut(shortcut_name: str) -> dict:
 
     Handles both single-key shortcuts (str) and two-key sequences (list).
     For sequences like ["g", "l"], presses each key with a delay between them.
+    Warns if FreeCAD doesn't appear to have focus.
     """
     entry = FREECAD_SHORTCUTS.get(shortcut_name)
     if not entry:
         return {"error": f"Unknown FreeCAD shortcut: {shortcut_name}"}
 
+    # Check focus — warn (but don't block) if FreeCAD isn't the active window
+    active_window = _get_active_window_name()
+    focus_warning = None
+    if active_window and "freecad" not in active_window.lower():
+        focus_warning = f"Warning: active window is '{active_window}', not FreeCAD. Shortcut may go to wrong window."
+        print(f"  [!] {focus_warning}")
+
     keys = entry["keys"]
 
-    try:
-        if isinstance(keys, list):
-            for key in keys:
-                subprocess.run(
-                    ["xdotool", "key", "--clearmodifiers", key],
-                    check=True,
-                )
-                time.sleep(FREECAD_SEQUENCE_DELAY)
-        else:
-            subprocess.run(
-                ["xdotool", "key", "--clearmodifiers", keys],
-                check=True,
-            )
-        time.sleep(SHORTCUT_DELAY)
-        return {"success": True}
-    except subprocess.CalledProcessError as e:
-        return {"error": str(e)}
+    if isinstance(keys, list):
+        for key in keys:
+            result = _xdotool_key(key)
+            if "error" in result:
+                return result
+            time.sleep(FREECAD_SEQUENCE_DELAY)
+    else:
+        result = _xdotool_key(keys)
+        if "error" in result:
+            return result
+
+    time.sleep(SHORTCUT_DELAY)
+    response = {"success": True}
+    if focus_warning:
+        response["warning"] = focus_warning
+    return response
 
 
 def open_application(app_name: str) -> dict:
