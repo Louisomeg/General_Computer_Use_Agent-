@@ -152,8 +152,11 @@ def get_custom_declarations(
         types.FunctionDeclaration(
             name="open_freecad",
             description=(
-                "Open freecad in particular. Use this function to open freecad and not open application"
-            )
+                "Open freecad in particular. Use this function to open freecad. It takes zero parameters"
+            ),
+            parameters_json_schema={
+                "type": "object"
+            }
         )
     ]
 
