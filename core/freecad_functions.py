@@ -1,16 +1,10 @@
 import subprocess
 import time
 
-from core.settings import (
-    UBUNTU_SHORTCUTS,
-    FREECAD_SHORTCUTS,
-    TYPING_DELAY,
-    SHORTCUT_DELAY,
-    FREECAD_SEQUENCE_DELAY,
-    APP_LAUNCH_DELAY,
-    SEARCH_TYPE_DELAY,
-    CLICK_DELAY,
-)
+from core.settings import (APP_LAUNCH_DELAY, CLICK_DELAY,
+                           FREECAD_SEQUENCE_DELAY, FREECAD_SHORTCUTS,
+                           SEARCH_TYPE_DELAY, SHORTCUT_DELAY, TYPING_DELAY,
+                           UBUNTU_SHORTCUTS)
 
 
 def _xdotool_key(key: str) -> dict:
@@ -21,10 +15,13 @@ def _xdotool_key(key: str) -> dict:
     """
     result = subprocess.run(
         ["xdotool", "key", "--clearmodifiers", key],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
-        return {"error": f"xdotool failed (rc={result.returncode}): {result.stderr.strip()}"}
+        return {
+            "error": f"xdotool failed (rc={result.returncode}): {result.stderr.strip()}"
+        }
     if "No such key name" in result.stderr:
         return {"error": f"xdotool rejected key '{key}': {result.stderr.strip()}"}
     return {"success": True}
@@ -35,7 +32,8 @@ def _get_active_window_name() -> str:
     try:
         result = subprocess.run(
             ["xdotool", "getactivewindow", "getwindowname"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         return result.stdout.strip() if result.returncode == 0 else ""
     except Exception:
@@ -97,12 +95,19 @@ def execute_freecad_shortcut(shortcut_name: str) -> dict:
         response["warning"] = focus_warning
     return response
 
+
 def open_freecad() -> dict:
     try:
-        subprocess.run(['freecad'], check=True)
+        subprocess.Popen(
+            ["./appimages/FreeCAD_1.0.0-conda-Linux-x86_64-py311.AppImage"],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         return {"success": True}
     except subprocess.CalledProcessError as e:
         return {"error": str(e)}
+
 
 def open_application(app_name: str) -> dict:
     """Launch an application by name using the Ubuntu desktop launcher.
@@ -116,8 +121,14 @@ def open_application(app_name: str) -> dict:
         )
         time.sleep(SEARCH_TYPE_DELAY)
         subprocess.run(
-            ["xdotool", "type", "--clearmodifiers", "--delay",
-             str(TYPING_DELAY), app_name],
+            [
+                "xdotool",
+                "type",
+                "--clearmodifiers",
+                "--delay",
+                str(TYPING_DELAY),
+                app_name,
+            ],
             check=True,
         )
         time.sleep(SEARCH_TYPE_DELAY)

@@ -172,9 +172,18 @@ class DesktopExecutor(Executor):
         "pagedown": "Page_Down",
         "page_down": "Page_Down",
         "insert": "Insert",
-        "f1": "F1", "f2": "F2", "f3": "F3", "f4": "F4",
-        "f5": "F5", "f6": "F6", "f7": "F7", "f8": "F8",
-        "f9": "F9", "f10": "F10", "f11": "F11", "f12": "F12",
+        "f1": "F1",
+        "f2": "F2",
+        "f3": "F3",
+        "f4": "F4",
+        "f5": "F5",
+        "f6": "F6",
+        "f7": "F7",
+        "f8": "F8",
+        "f9": "F9",
+        "f10": "F10",
+        "f11": "F11",
+        "f12": "F12",
     }
 
     def _normalize_key(self, key: str) -> str:
@@ -194,7 +203,8 @@ class DesktopExecutor(Executor):
         keys = self._normalize_keys(args["keys"])
         result = subprocess.run(
             ["xdotool", "key", keys],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         # xdotool returns 0 even when it can't find a key name, but prints
         # a warning to stderr. Detect this and report the error to the model.
@@ -284,7 +294,7 @@ class DesktopExecutor(Executor):
         x, y = self.denormalize(args["x"], args["y"])
         return freecad_functions.double_click(x, y)
 
-    def _open_freecad(self) -> dict:
+    def _open_freecad(self, args: dict) -> dict:
         return freecad_functions.open_freecad()
 
     def _open_application(self, args: dict) -> dict:
