@@ -2,9 +2,15 @@
 # General Engineering Agent — Settings & Configuration
 # =============================================================================
 
-# Screen dimensions (Ubuntu VM default)
+# Actual screen dimensions (Ubuntu VM) — used for xdotool coordinate mapping
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
+
+# Model-optimal screenshot resolution (Google's recommendation for computer-use)
+# The model outputs 0-999 normalized coords regardless of image size, but accuracy
+# is best at the resolution it was trained on: 1440x900.
+MODEL_SCREEN_WIDTH = 1440
+MODEL_SCREEN_HEIGHT = 900
 
 # Timing constants (seconds unless noted)
 ACTION_DELAY = 0.5              # Pause after each action for UI settling

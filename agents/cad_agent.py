@@ -70,12 +70,13 @@ After minimizing the terminal, follow these steps:
 1. Look at the screenshot — is FreeCAD already open?
    If YES: click on its window in the taskbar to bring it to focus.
    If NO: use open_application("FreeCAD"), then wait_5_seconds.
-2. Create a new document if needed — look for File menu in the menu bar, click it,
-   then click "New". Or use the Start page "Create New..." button if visible.
+2. Create a new document: use freecad_shortcut("file_new"), then wait_5_seconds.
+   Verify a new "Unnamed" document appears in the model tree.
 3. Switch to Part Design workbench — look at the workbench dropdown (usually top-center
    toolbar area) and click it, then select "Part Design" from the list.
-4. Create a Part Design Body — look in the Part Design menu or toolbar for "Create Body"
-   and click it. You should see "Body" and "Origin" appear in the model tree (left panel).
+4. Create a Part Design Body — open the "Part Design" menu in the menu bar, then
+   click "Create body" (usually the first item). You should see "Body" and "Origin"
+   appear in the model tree (left panel).
 5. Work through the design step by step — create sketches, add constraints,
    pad/pocket features, fillets, chamfers as needed.
 6. After each major operation, check the viewport to verify the result.
@@ -99,15 +100,19 @@ Do NOT keep performing actions after the main task is done.
 
 ## When Working with Measurements
 - All dimensions should match what was specified in the task.
-- Use constraint tools (K+D for distance, K+R for radius) to set exact values.
+- Use constraint tools: freecad_shortcut("sketcher_constrain_distance") for distance (K+D),
+  freecad_shortcut("sketcher_constrain_radius") for radius (K+R).
 - When a dimension dialog appears, look at the input field in the screenshot,
-  click on it, type the value, then click OK or press Enter.
+  click on it, type the NUMERIC VALUE ONLY (e.g. "30" not "30mm"), then press Enter.
 
-## Error Recovery
+## Error Recovery — CRITICAL RULES
+- NEVER create a new document to start over. Work with the current document.
+- If you made a mistake, use freecad_shortcut("edit_undo") (Ctrl+Z) to undo it.
 - If an action fails, LOOK at the screenshot again and try a different approach.
-- If something isn't working after 3 attempts, move on to the next step or stop.
-- Do NOT blindly repeat the same failed action — always re-examine the screenshot.
 - If a dialog or popup appears unexpectedly, close it with Escape or click its X button.
+- If you accidentally leave a sketch, double-click "Sketch" in the model tree to re-enter.
+- If something isn't working after 3 attempts, call task_complete() with a status report.
+- Do NOT blindly repeat the same failed action — always re-examine the screenshot.
 """
 
 # Full system prompt = base desktop instructions + CAD addendum
@@ -252,11 +257,23 @@ class CADAgent:
             parts.append("")
 
         parts.append(
-            "Begin working on this task now. Follow the CAD Design Workflow:\n"
-            "1. First minimize the terminal with system_shortcut(\"minimize_window\")\n"
-            "2. Then check the screenshot — is FreeCAD open?\n"
-            "3. Proceed through the design steps visually.\n"
-            "4. When done, call task_complete() with a summary."
+            "## Execution Plan\n"
+            "Follow the CAD Design Workflow from your system instructions:\n"
+            "1. Minimize the terminal: system_shortcut(\"minimize_window\")\n"
+            "2. Check if FreeCAD is open. If not, open it.\n"
+            "3. Create a new document: freecad_shortcut(\"file_new\")\n"
+            "4. Open Part Design menu and click \"Create body\"\n"
+            "5. Create a new sketch on the XY plane:\n"
+            "   - In the model tree, click on \"XY_Plane\" under Origin\n"
+            "   - Then click the \"New Sketch\" button in the toolbar or Part Design menu\n"
+            "6. Draw the 2D profile using sketcher tools (freecad_shortcut)\n"
+            "7. Add dimension constraints:\n"
+            "   - Select an edge, then use freecad_shortcut(\"sketcher_constrain_distance\")\n"
+            "   - Type the numeric value in the dialog and press Enter\n"
+            "8. Close the sketch: freecad_shortcut(\"sketcher_close\") or press Escape\n"
+            "9. Pad the sketch: select it and use Part Design > Pad, set the depth\n"
+            "10. Call task_complete() with a summary of what was built\n\n"
+            "IMPORTANT: Never create a new document to start over. Use Undo if you make a mistake."
         )
         return "\n".join(parts)
 

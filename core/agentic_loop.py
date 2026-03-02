@@ -1,6 +1,11 @@
 """
 Agentic Loop — shared foundation for all agents.
 
+Screenshot delivery follows Google's reference implementation:
+  - Initial screenshot bundled with the prompt
+  - Subsequent screenshots bundled with function responses
+  (NOT as separate user messages)
+
 Backward compatible with Louis's desktop usage:
     loop = AgenticLoop(client)
     loop.agentic_loop("open freecad", DesktopExecutor())
@@ -17,7 +22,9 @@ from core.executor import Executor
 from core.screenshot import capture_desktop_screenshot
 from core.settings import SYSTEM_INSTRUCTION
 
-MAX_SCREENSHOTS = 1
+# Keep only the N most recent screenshots in conversation history.
+# Older screenshots are stripped to save context window space.
+MAX_SCREENSHOTS = 2
 
 
 REPORT_FINDINGS_DECLARATION = types.FunctionDeclaration(
@@ -97,7 +104,7 @@ class AgenticLoop:
     ) -> Literal["CONTINUE", "TERMINATE"]:
         """Handle Gemini's safety_decision on a function call.
 
-        For automated research agents we auto-confirm safe actions.
+        For automated agents we auto-confirm safe actions.
         Returns CONTINUE to proceed or TERMINATE to stop.
         """
         decision = safety.get("decision", "")
@@ -110,9 +117,46 @@ class AgenticLoop:
             return "CONTINUE"
         return "CONTINUE"
 
+    # ── Screenshot management ────────────────────────────────────────────
+
+    def _clean_old_screenshots(self, history: list):
+        """Remove old screenshots from history, keeping only the most recent.
+
+        Walks backward through history and strips inline_data (images) from
+        older turns to stay within context limits.
+        """
+        screenshot_count = 0
+        for content in reversed(history):
+            if content.role == "user" and content.parts:
+                parts_to_remove = []
+                for part in content.parts:
+                    if part.inline_data is not None:
+                        screenshot_count += 1
+                        if screenshot_count > MAX_SCREENSHOTS:
+                            parts_to_remove.append(part)
+                for part in parts_to_remove:
+                    content.parts.remove(part)
+
+    # ── Main loop ────────────────────────────────────────────────────────
+
     def agentic_loop(self, prompt: str, executor: Executor):
+        """Run the agentic loop: screenshot → model → execute → repeat.
+
+        Screenshot delivery follows Google's reference implementation:
+        1. Initial screenshot is bundled WITH the prompt
+        2. Subsequent screenshots are bundled WITH function responses
+        This matches the pattern the model was trained on.
+        """
         self._turn_count = 0  # Reset per call so each invocation gets a fresh budget
-        history = [types.Content(role='user', parts=[types.Part.from_text(text=prompt)])]
+
+        # ── Initial turn: prompt + screenshot ────────────────────────────
+        screenshot_bytes = self.screenshot_fn()
+        history = [
+            types.Content(role='user', parts=[
+                types.Part.from_text(text=prompt),
+                types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes),
+            ])
+        ]
 
         while True:
             self._turn_count += 1
@@ -120,49 +164,7 @@ class AgenticLoop:
                 termcolor.cprint(f"Max turns ({self.max_turns}) reached.", color="yellow")
                 break
 
-            # Inject turns-remaining warning so model knows to wrap up
-            if self.max_turns > 0:
-                remaining = self.max_turns - self._turn_count
-                if remaining <= 3 and remaining > 0:
-                    warning = (
-                        f"WARNING: You have {remaining} turns left. "
-                        f"Wrap up your current work and finish the task NOW. "
-                        f"Do not start any new operations — complete or report immediately."
-                    )
-                    history.append(types.Content(role='user', parts=[
-                        types.Part.from_text(text=warning)
-                    ]))
-                    print(f"  [!] Turn warning injected: {remaining} turns left")
-                elif remaining == 0:
-                    warning = (
-                        "FINAL TURN. You MUST finish right now. "
-                        "Complete the task with whatever progress you have made."
-                    )
-                    history.append(types.Content(role='user', parts=[
-                        types.Part.from_text(text=warning)
-                    ]))
-                    print(f"  [!] FINAL TURN warning injected")
-
-            # Take screenshot (desktop scrot or browser playwright)
-            screenshot_bytes = self.screenshot_fn()
-            history.append(types.Content(role='user', parts=[
-                types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes)
-            ]))
-
-            # Clean old screenshots
-            screenshot_count = 0
-            for content in reversed(history):
-                if content.role == "user" and content.parts:
-                    parts_to_remove = []
-                    for part in content.parts:
-                        if part.inline_data is not None:
-                            screenshot_count += 1
-                            if screenshot_count > MAX_SCREENSHOTS:
-                                parts_to_remove.append(part)
-                    for part in parts_to_remove:
-                        content.parts.remove(part)
-
-            # Get model response
+            # ── Get model response ───────────────────────────────────────
             try:
                 response = self.get_model_response(history)
             except Exception as e:
@@ -189,17 +191,22 @@ class AgenticLoop:
                 turn_info += f" | {short}"
             print(turn_info)
 
-            # Handle malformed function calls
+            # Handle malformed function calls — retry without breaking
             if (not function_calls and not reasoning
                     and candidate.finish_reason == types.FinishReason.MALFORMED_FUNCTION_CALL):
+                # Re-send the last screenshot so the model can try again
+                screenshot_bytes = self.screenshot_fn()
+                history.append(types.Content(role='user', parts=[
+                    types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes),
+                ]))
                 continue
 
+            # No function calls → model is done talking
             if not function_calls:
                 print(f"Agent Loop Complete: {reasoning}")
                 break
 
-            # Execute function calls via the executor
-            # SAFETY CHECK: handle safety_decision before executing
+            # ── Execute function calls ───────────────────────────────────
             should_stop = False
             response_parts = []
 
@@ -232,8 +239,39 @@ class AgenticLoop:
                     if fc_response.get("status") in ("research_complete", "task_complete"):
                         should_stop = True
 
+            # ── Build the response content: func responses + screenshot ──
+            # This matches Google's reference implementation pattern:
+            # function responses and the resulting screenshot go in ONE message.
             if response_parts:
+                # Capture screenshot AFTER executing all actions for this turn
+                screenshot_bytes = self.screenshot_fn()
+                response_parts.append(
+                    types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes)
+                )
+
+                # Inject turns-remaining warning if approaching budget
+                if self.max_turns > 0:
+                    remaining = self.max_turns - self._turn_count
+                    if 0 < remaining <= 3:
+                        warning = (
+                            f"WARNING: You have {remaining} turns left. "
+                            f"Wrap up your current work and finish the task NOW. "
+                            f"Do not start any new operations — complete or report immediately."
+                        )
+                        response_parts.append(types.Part.from_text(text=warning))
+                        print(f"  [!] Turn warning injected: {remaining} turns left")
+                    elif remaining == 0:
+                        warning = (
+                            "FINAL TURN. You MUST finish right now. "
+                            "Complete the task with whatever progress you have made."
+                        )
+                        response_parts.append(types.Part.from_text(text=warning))
+                        print(f"  [!] FINAL TURN warning injected")
+
                 history.append(types.Content(role='user', parts=response_parts))
+
+            # Clean old screenshots to save context window
+            self._clean_old_screenshots(history)
 
             if should_stop:
                 termcolor.cprint("Task complete.", color="green")
