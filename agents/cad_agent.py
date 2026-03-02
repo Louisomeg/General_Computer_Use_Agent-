@@ -88,42 +88,84 @@ If you encounter repeated errors (3+ failures on the same action), call task_com
 describing what went wrong and what was accomplished so far.
 Do NOT keep performing actions after the main task is done.
 
+## Toolbar Safety — CRITICAL
+The toolbar icons in FreeCAD are VERY SMALL (~24px) and packed tightly together.
+Clicking the wrong icon can trigger catastrophic operations (AdditiveHelix, Measurement,
+closing the sketch, etc.) that are hard to recover from.
+
+RULES for toolbar interaction:
+- ALWAYS prefer using MENUS (Part Design menu, Sketch menu) over toolbar icons.
+  Menus have large text labels that are easy to click accurately.
+- The ONLY toolbar clicks that are safe are large, obvious buttons like
+  "Close" or "OK" in the Tasks panel (left side).
+- For Part Design operations (Pad, Pocket, Fillet, Chamfer) — use the
+  "Part Design" menu in the menu bar. Click the menu text, then click the item.
+- For Sketch constraints — use the "Sketch" menu in the menu bar, then
+  navigate to "Constrain" or "Dimensional constraints" submenu.
+- For sketcher geometry (line, rectangle, circle) — use freecad_shortcut
+  (e.g. sketcher_line, sketcher_rectangle, sketcher_circle) since these are
+  two-key sequences that are safer and faster than toolbar icons.
+
 ## Key FreeCAD Rules
 - Always create a Body before any Part Design operations.
 - Close a sketch before padding or pocketing it.
 - When sketching, add constraints to fully define the geometry.
-- For Pad, Pocket, Fillet, Chamfer — find them in the Part Design menu or toolbar
-  by looking at the screenshot and clicking. Only use shortcuts if no button is visible.
-- For sketcher geometry (line, rectangle, circle) — use freecad_shortcut
-  (e.g. sketcher_line, sketcher_rectangle, sketcher_circle) since these are
-  two-key sequences that are faster than finding toolbar buttons.
+- For Pad, Pocket, Fillet, Chamfer — use the Part Design MENU, not toolbar icons.
+- For sketcher geometry — use freecad_shortcut (e.g. sketcher_rectangle).
 
-## Rectangle Auto-Constraints — IMPORTANT
-When you draw a rectangle with sketcher_rectangle, FreeCAD automatically adds
-positional constraints (fixing the corner coordinates). These will appear in the
-Constraints list but are NORMAL — do NOT try to delete them.
-Instead, just add your dimensional constraints on top:
-1. Select a horizontal edge → freecad_shortcut("sketcher_constrain_distance") → type the width
-2. Select a vertical edge → freecad_shortcut("sketcher_constrain_distance") → type the height
-The auto-constraints will turn green once the sketch is fully constrained.
-If constraints turn red (over-constrained), use freecad_shortcut("edit_undo") to undo
-your last constraint and try a different approach. Do NOT try to delete individual
-constraints by selecting them and pressing Delete — that rarely works in FreeCAD's UI.
+## Drawing Shapes with Exact Dimensions — PREFERRED METHOD
+When drawing rectangles (and many other shapes), FreeCAD shows a "Parameters" panel
+in the Tasks area (left side) while the drawing tool is active. This panel has input
+fields for Width, Height, etc.
+
+THE BEST way to create dimensioned geometry:
+1. Activate the tool: freecad_shortcut("sketcher_rectangle")
+2. Click ONE point in the viewport to place the first corner.
+   IMPORTANT: Click AWAY from the center — avoid the origin area where the
+   red (X) and green (Y) axis lines cross. Click in the upper-left quadrant
+   of the viewport (around coordinates x=300, y=300 in normalized 0-999 range).
+3. Look at the Tasks panel on the LEFT side — you will see "Rectangle parameters"
+   with Width and Height input fields.
+4. Click the Width input field and type the value (e.g. "30"), press Tab.
+5. Click the Height input field and type the value (e.g. "30"), press Enter.
+6. The rectangle is now created with exact dimensions.
+7. Press Escape to exit the rectangle tool.
+
+This approach is MUCH more reliable than drawing a random rectangle and then
+trying to select individual edges to add constraints afterward.
+
+## Selecting Sketch Edges for Constraints (fallback method)
+If you need to select a sketch edge for a constraint:
+- Click at the MIDPOINT of the line, not near corners or endpoints.
+- Make sure you are NOT clicking on the red (X) or green (Y) axis lines.
+  If you drew near the origin, the axes and edges overlap — impossible to select.
+- Always draw shapes AWAY from the origin (0,0) so edges don't overlap axes.
+- If you get "Wrong selection", click in empty space first to deselect, then try again.
+- As a fallback, use the Sketch menu → Dimensional constraints instead of toolbar icons.
 
 ## When Working with Measurements
 - All dimensions should match what was specified in the task.
-- Use constraint tools: freecad_shortcut("sketcher_constrain_distance") for distance (K+D),
-  freecad_shortcut("sketcher_constrain_radius") for radius (K+R).
+- PREFERRED: Enter dimensions directly in the shape's Parameters panel (see above).
+- FALLBACK: Use constraint tools via the Sketch menu → Dimensional constraints.
 - When a dimension dialog appears, look at the input field in the screenshot,
   click on it, type the NUMERIC VALUE ONLY (e.g. "30" not "30mm"), then press Enter.
 
 ## Error Recovery — CRITICAL RULES
+- NEVER use the Delete key to fix mistakes. Delete permanently removes items from the
+  model tree and can delete the WRONG thing (like your entire sketch).
+- ALWAYS use freecad_shortcut("edit_undo") (Ctrl+Z) to fix mistakes. Press it
+  MULTIPLE TIMES if needed to get back to a known good state.
+- If you accidentally trigger a wrong tool (helix, measurement, fillet, etc.):
+  1. Press key_combination("escape") to cancel the tool
+  2. Use freecad_shortcut("edit_undo") MULTIPLE TIMES to undo any changes
+  3. Look at the model tree (left panel) to verify it matches what you expect
+     (Body → Origin + Sketch, nothing extra)
 - NEVER create a new document to start over. Work with the current document.
-- If you made a mistake, use freecad_shortcut("edit_undo") (Ctrl+Z) to undo it.
-- If an action fails, LOOK at the screenshot again and try a different approach.
-- If a dialog or popup appears unexpectedly, close it with Escape or click its X button.
+- If a dialog or popup appears unexpectedly, close it by clicking "Close" in the
+  dialog (look for Close/Cancel buttons), or press Escape.
 - If you accidentally leave a sketch, double-click "Sketch" in the model tree to re-enter.
-- If something isn't working after 3 attempts, call task_complete() with a status report.
+- If something isn't working after 3 attempts with DIFFERENT approaches,
+  call task_complete() with a status report.
 - Do NOT blindly repeat the same failed action — always re-examine the screenshot.
 """
 
@@ -372,34 +414,48 @@ class CADAgent:
 
         parts.append(
             "## Execution Plan\n"
-            "Follow the CAD Design Workflow from your system instructions:\n"
-            "1. Minimize the terminal: system_shortcut(\"minimize_window\")\n"
-            "2. Check if FreeCAD is open. If not, use open_application(\"FreeCAD\"), then wait_5_seconds.\n"
+            "Follow these steps IN ORDER. After each step, study the screenshot to confirm it worked.\n\n"
+            "1. Minimize the terminal: system_shortcut(\"minimize_window\")\n\n"
+            "2. Check if FreeCAD is open. If not, use open_application(\"FreeCAD\"), then wait_5_seconds.\n\n"
             "3. Look at the model tree (left panel). If an empty document already exists\n"
             "   (like \"Unnamed\"), USE IT. Only use freecad_shortcut(\"file_new\") if\n"
-            "   there is no existing empty document.\n"
-            "4. Create a Body: click the Part Design menu in the menu bar, then click\n"
-            "   \"Create body\". If the sketcher dialog asks \"A body is needed\", click Yes.\n"
+            "   there is no existing empty document.\n\n"
+            "4. Create a Body: click the \"Part Design\" text in the MENU BAR (top of window),\n"
+            "   then click \"Create body\" in the dropdown menu.\n"
+            "   Verify: \"Body\" and \"Origin\" should appear in the model tree.\n\n"
             "5. Create a new sketch on the XY plane:\n"
-            "   - Look for a \"New Sketch\" button in the toolbar or Part Design menu\n"
-            "   - When the plane selector appears, select \"XY_Plane\" and click OK\n"
-            "6. Draw the 2D profile using sketcher tools (freecad_shortcut)\n"
-            "   - For a cube/box: use freecad_shortcut(\"sketcher_rectangle\")\n"
-            "   - Click two points in the viewport to draw the rectangle\n"
-            "   - FreeCAD will auto-add positional constraints — this is NORMAL, do not delete them\n"
-            "7. Add dimension constraints:\n"
-            "   - Click on a horizontal edge of the rectangle to select it\n"
-            "   - Use freecad_shortcut(\"sketcher_constrain_distance\")\n"
-            "   - Type the numeric value (e.g. \"30\") in the dialog and press Enter\n"
-            "   - Repeat for a vertical edge\n"
-            "8. Close the sketch: freecad_shortcut(\"sketcher_close\")\n"
-            "9. Pad the sketch: look in the Part Design menu or toolbar for \"Pad\".\n"
-            "   Click it, set the length in the dialog, and click OK.\n"
-            "10. Call task_complete() with a summary of what was built\n\n"
+            "   - Click the \"Part Design\" MENU again, then click \"New Sketch\"\n"
+            "   - When the plane selector dialog appears, click \"XY_Plane\" then click OK\n"
+            "   - Verify: you should see the sketcher grid with red/green axis lines\n\n"
+            "6. Draw the rectangle WITH exact dimensions (use Parameters panel):\n"
+            "   a. Use freecad_shortcut(\"sketcher_rectangle\") to activate the rectangle tool\n"
+            "   b. Click ONE point in the UPPER-LEFT area of the viewport (around x=300, y=300)\n"
+            "      to place the first corner. IMPORTANT: stay AWAY from the center where axes cross.\n"
+            "   c. After clicking the first point, look at the Tasks panel on the LEFT side.\n"
+            "      You will see \"Rectangle parameters\" with Width and Height input fields.\n"
+            "   d. Click the Width input field in the Tasks panel and type the width value\n"
+            "      (e.g. \"30\"), then press Tab to move to the Height field.\n"
+            "   e. Type the height value (e.g. \"30\"), then press Enter to confirm.\n"
+            "   f. The rectangle is now created with exact dimensions. Press Escape to exit the tool.\n"
+            "   NOTE: If the Parameters panel approach doesn't work, you can click a second\n"
+            "   point to draw the rectangle, then add constraints via the Sketch menu →\n"
+            "   Dimensional constraints → Constrain distance.\n\n"
+            "7. Close the sketch: freecad_shortcut(\"sketcher_close\")\n"
+            "   Verify: you should see the rectangle outline in the 3D viewport.\n\n"
+            "8. Pad (extrude) the sketch:\n"
+            "   - Click the \"Part Design\" text in the MENU BAR\n"
+            "   - Click \"Pad\" in the dropdown menu\n"
+            "   - A dialog will appear with a Length input field\n"
+            "   - Click the Length field, clear it, type the depth value (e.g. \"30\")\n"
+            "   - Click OK to apply the pad\n"
+            "   - Verify: you should see a 3D solid in the viewport\n\n"
+            "9. Call task_complete() with a summary of what was built.\n\n"
             "CRITICAL RULES:\n"
-            "- NEVER create a new document to start over. Use freecad_shortcut(\"edit_undo\") if you make a mistake.\n"
-            "- Do NOT try to delete auto-constraints from the rectangle. Just add dimensional constraints on top.\n"
-            "- If a key_combination fails, try using the equivalent freecad_shortcut instead."
+            "- NEVER use Delete key. Always use freecad_shortcut(\"edit_undo\") to fix mistakes.\n"
+            "- NEVER click small toolbar icons. Use MENUS (Part Design, Sketch) instead.\n"
+            "- If you accidentally trigger a wrong tool, press Escape then Undo multiple times.\n"
+            "- If a key_combination fails, try using the equivalent freecad_shortcut instead.\n"
+            "- Draw shapes AWAY from the origin center to avoid axis selection problems."
         )
         return "\n".join(parts)
 

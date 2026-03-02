@@ -1,0 +1,161 @@
+name: basic_operations
+type: tutorial
+description: >
+  Fundamental operations for creating and modifying 3D solids in FreeCAD 1.0.
+  Covers Pad (extrusion), Chamfer, Fillet, Appearance, Export, Revolution,
+  Pocket, Groove, Thickness (shell), Mirror, and Linear/Circular Patterns.
+  This skill serves as a general FreeCAD tutorial — its tips, troubleshooting,
+  and workflow steps apply to any FreeCAD modeling task.
+difficulty: beginner
+source:
+  title: "FreeCAD 1.0 Basic Operations for Creating 3D Solids"
+  creator: CAD CAM lessons
+  duration: "26:26"
+
+prerequisites:
+  - FreeCAD 1.0 installed on a computer (internet access not required for modeling)
+  - Basic understanding of navigating a 3D space
+
+tools:
+  - name: FreeCAD
+    version: "1.0"
+    purpose: Open-source 3D CAD parametric modeling software used to design the 3D solids
+  - name: 3D Slicer Software
+    version: Any
+    purpose: To prepare exported STEP or STL files for 3D printing (mentioned as a next step)
+
+tips:
+  - Always aim to fully constrain your 2D sketches. Unconstrained sketches (white lines) are a bad habit and lead to errors when updating parameters.
+  - "Use 'Construction Geometry' (toggled via the toolbar, turning lines blue) for drawing reference lines and points. These don't create 3D shapes but help position things perfectly."
+  - "When creating multiple identical features (like circles for screws), draw them roughly, then use the 'Equality' constraint to make them the exact same size. This way, changing one dimension updates them all."
+  - "Rely heavily on the 'External Geometry' tool to project edges from existing solids into your active sketch. This ensures your new cuts or pads line up perfectly with the existing shape."
+  - "When using patterns (Linear or Polar), remember that the length/angle specified is the total span from the first instance to the last, not the spacing between individual instances."
+
+troubleshooting:
+  - problem: "The Fillet or Chamfer operation does not work properly and throws an error."
+    solution: "This is a known minor quirk. Try modifying the dimensions of the base sketch or the pad depth slightly, and attempt the operation again."
+  - problem: "You cannot link a new sketch dimension to an existing 3D edge."
+    solution: "Use the 'External Geometry' tool to click on the 3D edge, bringing a reference line into your 2D sketch plane that you can snap to."
+  - problem: "Drawing lines snap to the wrong points or create unwanted automatic constraints."
+    solution: "Pay attention to the auto-constraint icons that pop up next to the cursor when drawing. If a line is acting stubborn, check the constraints panel and delete the unwanted automatic constraint."
+
+key_concepts:
+  - concept: Workbenches
+    explanation: "FreeCAD functions as a modular system. Tools are grouped into 'Workbenches' (like Part Design, Sketcher) tailored to specific tasks."
+  - concept: Parametric Modeling
+    explanation: "A modeling methodology where geometric features are driven by mathematical rules (parameters and constraints). If you change a base sketch's dimension, the 3D model automatically updates to reflect the change."
+  - concept: Construction Geometry
+    explanation: "Special lines and points in a sketch (colored blue) that act as a framework for the drawing. They help align and measure standard geometry without becoming part of the final 3D extrusion."
+
+steps:
+  - step_number: 1
+    title: Initial Setup and Interface Navigation
+    description: >
+      Switch to the Part Design workbench, which is primarily used for creating
+      3D solids. Configure navigation settings if needed.
+    substeps:
+      - Select the Part Design workbench from the dropdown menu.
+      - "Click the new document icon or the 'Parametric Part' button."
+      - "Ensure your navigation style (e.g., Blender) is set by right-clicking the 3D space or adjusting settings in the bottom right corner."
+    settings: "Navigation Style: Blender (recommended)"
+    gotchas: "Without selecting the correct workbench, essential 3D solid tools will be hidden."
+
+  - step_number: 2
+    title: Creating a Base Solid with Pad (Extrusion)
+    description: >
+      Create a 2D sketch and extrude it into a 3D object using the Pad operation.
+    substeps:
+      - "Click 'Create Sketch' and select the XY plane."
+      - "Draw a rectangle and specify its dimensions (e.g., 50mm by 30mm)."
+      - "Add internal shapes (like circles) if you want holes in the extruded base."
+      - "Close the sketch and click the 'Pad' operation."
+      - "Enter the desired extrusion length (e.g., 10mm) and click OK."
+    gotchas: "Leaving sketches under-constrained (white lines) can lead to unpredictable behavior when editing parameters later. A fully constrained sketch turns green, indicating zero degrees of freedom."
+
+  - step_number: 3
+    title: Adding Chamfers and Fillets
+    description: >
+      Modify the sharp edges of the 3D solid using the Chamfer and Fillet tools.
+    substeps:
+      - "Select the desired edge(s) of the 3D solid (hold CTRL to select multiple)."
+      - "Click the 'Chamfer' or 'Fillet' icon in the Part Design menu."
+      - "Specify the radius or dimension (e.g., 5mm)."
+      - Click OK to apply.
+    gotchas: "Sometimes the Chamfer or Fillet tool may fail due to geometric conflicts. If this happens, adjust the base dimensions slightly and try again."
+
+  - step_number: 4
+    title: Changing Object Appearance
+    description: >
+      Apply materials or custom colors to the 3D model for better visualization.
+    substeps:
+      - "Right-click the 'Body' in the feature tree on the left."
+      - "Select 'Appearance'."
+      - "Choose a standard material (e.g., Stone) from the list, or click the color box to set a custom RGB color."
+    gotchas: ""
+
+  - step_number: 5
+    title: Exporting the Model for 3D Printing
+    description: >
+      Export the finished part to a format suitable for slicing software.
+    substeps:
+      - Select the Body in the tree.
+      - "Go to File -> Export."
+      - "Choose the '.step' format for higher accuracy, or '.stl' for older slicer compatibility."
+      - Name the file and save.
+    settings: "Export Format: STEP (.step) recommended."
+    gotchas: "STL format saves the model as a mesh of triangles, which can lower resolution. STEP is preferred if supported by your 3D printer's slicer."
+
+  - step_number: 6
+    title: Using the Revolution Operation
+    description: >
+      Create a cylindrical or ring-like solid by sweeping a 2D sketch around an axis.
+    substeps:
+      - "Create a sketch on a plane (e.g., XZ plane)."
+      - "Draw a shape (e.g., a rectangle) offset from the center vertical axis."
+      - "Close the sketch and click the 'Revolution' tool."
+      - "Select the axis of revolution (e.g., Vertical Sketch Axis / Z-axis)."
+      - "Set the angle (360 degrees for a full ring, or less for a partial arc)."
+    settings: "Angle: 360 degrees (default)"
+    gotchas: "Ensure the sketch does not cross the axis of revolution, which can cause self-intersecting geometry errors."
+
+  - step_number: 7
+    title: Removing Material with Pocket and Groove
+    description: >
+      Cut into existing solids using standard linear subtraction (Pocket) or
+      rotational subtraction (Groove).
+    substeps:
+      - "For a Pocket: Sketch on an existing face, draw a shape, click 'Pocket', and set depth or select 'Through All'."
+      - "For a Groove: Create a sketch on a plane intersecting the solid, draw the profile to remove, click 'Groove', and select the axis of rotation."
+    gotchas: "If the Pocket or Groove doesn't seem to work, verify that the sketch is mapped correctly to the solid and the direction of the cut is inward. Use External Geometry (blue lines) to reference existing edges."
+
+  - step_number: 8
+    title: Shelling a Solid with the Thickness Tool
+    description: >
+      Hollow out a solid block to create a box or shell.
+    substeps:
+      - "Create a base solid (e.g., a padded rectangle)."
+      - "Select the face you want to remove (the 'open' top of the box)."
+      - "Click the 'Thickness' tool."
+      - "Specify the wall thickness (e.g., 3mm) and select whether to build the thickness 'Inward' or 'Outward'."
+    settings: "Thickness: 3mm, Make thickness inward: Checked"
+    gotchas: "The selected face disappears and the solid becomes a container with uniform wall thickness."
+
+  - step_number: 9
+    title: Mirroring Features
+    description: >
+      Duplicate a feature across a symmetry plane to save modeling time.
+    substeps:
+      - "Select an existing feature from the tree (e.g., a Pocket)."
+      - "Click the 'Mirror' operation."
+      - "Select the plane to mirror across (e.g., YZ plane or a base plane)."
+    gotchas: "The mirror plane must be correctly positioned relative to the feature for the copy to land on the solid body."
+
+  - step_number: 10
+    title: Creating Linear and Circular Patterns
+    description: >
+      Repeat features multiple times in straight lines or circles.
+    substeps:
+      - "Select the feature to pattern (e.g., a hole)."
+      - "For Linear: Click 'Linear Pattern', select the direction axis, set the overall length, and input the number of occurrences."
+      - "For Circular: Click 'Polar Pattern', select the rotational axis, set the angle (e.g., 360), and input the number of occurrences."
+    gotchas: "Ensure the overall length for a linear pattern does not push the patterned elements outside the boundary of the main solid. Patterns adapt dynamically — changing length/angle auto-recalculates spacing."
