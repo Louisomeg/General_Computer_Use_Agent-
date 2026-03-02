@@ -79,6 +79,8 @@ class DesktopExecutor(Executor):
             "right_click_at": self._right_click_at,
             "double_click_at": self._double_click_at,
             "open_application": self._open_application,
+            # Completion signal
+            "task_complete": self._task_complete,
         }
         return handlers.get(name)
 
@@ -221,3 +223,8 @@ class DesktopExecutor(Executor):
 
     def _open_application(self, args: dict) -> dict:
         return freecad_functions.open_application(args["name"])
+
+    def _task_complete(self, args: dict) -> dict:
+        summary = args.get("summary", "Task completed")
+        print(f"  [Task Complete] {summary}")
+        return {"status": "task_complete", "summary": summary}

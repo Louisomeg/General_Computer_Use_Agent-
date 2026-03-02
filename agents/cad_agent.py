@@ -12,12 +12,13 @@
 #   task = Task(description="Create an M10x30 hex bolt", params={...})
 #   result = agent.execute(task)
 
-from google.genai import Client
+from google.genai import Client, types
 
 from agents.registry import register
 from core.agentic_loop import AgenticLoop
 from core.executor import Executor
 from core.models import Task, TaskStatus, ProcedureState, load_skill
+from core.settings import SYSTEM_INSTRUCTION
 
 
 # Agent Card — describes what this agent can do (A2A-style, kept in code)
@@ -42,30 +43,95 @@ AGENT_CARD = {
 }
 
 
-# System prompt specific to the CAD agent's role
-CAD_AGENT_PROMPT = """You are a CAD design agent working in FreeCAD. You receive design tasks
-with specific measurements and create the 3D models step by step.
+# ---------------------------------------------------------------------------
+# CAD-specific ADDENDUM — extends the base SYSTEM_INSTRUCTION, not replaces it
+# ---------------------------------------------------------------------------
+# The base SYSTEM_INSTRUCTION (from core.settings) teaches the model:
+#   - coordinate system (0-999 normalized)
+#   - visual-first navigation (look at screenshot, click visible elements)
+#   - GNOME desktop navigation (Activities, taskbar, app grid)
+#   - 5-step application launch procedure
+#   - when to use shortcuts vs GUI clicks
+#   - FreeCAD basics (menus, toolbars, panels)
+#
+# This addendum adds CAD-specific workflow on top of that foundation.
+# ---------------------------------------------------------------------------
 
-## Your Workflow
-1. Make sure FreeCAD is open. If not, open it.
-2. Create a new document if needed.
-3. Create a Part Design Body if one doesn't exist.
-4. Work through the design step by step — create sketches, add constraints,
+CAD_ADDENDUM = """
+
+## CRITICAL: Terminal Window
+When you start, you will see a terminal window on screen running the agent script.
+IMMEDIATELY minimize it with system_shortcut("minimize_window") as your FIRST action.
+Do NOT try to close, read, or interact with the terminal — just minimize it and move on.
+After minimizing, focus EXCLUSIVELY on FreeCAD for the rest of the task.
+
+## CAD Design Workflow
+After minimizing the terminal, follow these steps:
+1. Look at the screenshot — is FreeCAD already open?
+   If YES: click on its window in the taskbar to bring it to focus.
+   If NO: use open_application("FreeCAD"), then wait_5_seconds.
+2. Create a new document if needed — look for File menu in the menu bar, click it,
+   then click "New". Or use the Start page "Create New..." button if visible.
+3. Switch to Part Design workbench — look at the workbench dropdown (usually top-center
+   toolbar area) and click it, then select "Part Design" from the list.
+4. Create a Part Design Body — look in the Part Design menu or toolbar for "Create Body"
+   and click it. You should see "Body" and "Origin" appear in the model tree (left panel).
+5. Work through the design step by step — create sketches, add constraints,
    pad/pocket features, fillets, chamfers as needed.
-5. After each major operation, verify the result looks correct in the viewport.
+6. After each major operation, check the viewport to verify the result.
+7. When finished, call task_complete(summary="description of what was built").
+
+## Completion
+When you have finished the design, call task_complete() with a summary of what you built.
+If you encounter repeated errors (3+ failures on the same action), call task_complete()
+describing what went wrong and what was accomplished so far.
+Do NOT keep performing actions after the main task is done.
 
 ## Key FreeCAD Rules
 - Always create a Body before any Part Design operations.
 - Close a sketch before padding or pocketing it.
 - When sketching, add constraints to fully define the geometry.
-- Use the Part Design menu or toolbar for Pad, Pocket, Fillet, Chamfer.
-- Use Sketcher tools (G+L for line, G+R for rectangle, G+C for circle, etc.) for geometry.
+- For Pad, Pocket, Fillet, Chamfer — find them in the Part Design menu or toolbar
+  by looking at the screenshot and clicking. Only use shortcuts if no button is visible.
+- For sketcher geometry (line, rectangle, circle) — use freecad_shortcut
+  (e.g. sketcher_line, sketcher_rectangle, sketcher_circle) since these are
+  two-key sequences that are faster than finding toolbar buttons.
 
 ## When Working with Measurements
 - All dimensions should match what was specified in the task.
 - Use constraint tools (K+D for distance, K+R for radius) to set exact values.
-- Double-check dimension values in the constraint dialogs before confirming.
+- When a dimension dialog appears, look at the input field in the screenshot,
+  click on it, type the value, then click OK or press Enter.
+
+## Error Recovery
+- If an action fails, LOOK at the screenshot again and try a different approach.
+- If something isn't working after 3 attempts, move on to the next step or stop.
+- Do NOT blindly repeat the same failed action — always re-examine the screenshot.
+- If a dialog or popup appears unexpectedly, close it with Escape or click its X button.
 """
+
+# Full system prompt = base desktop instructions + CAD addendum
+CAD_SYSTEM_INSTRUCTION = SYSTEM_INSTRUCTION + CAD_ADDENDUM
+
+
+# Function declaration so the CAD agent can signal "I'm done"
+TASK_COMPLETE_DECLARATION = types.FunctionDeclaration(
+    name="task_complete",
+    description=(
+        "Call this when you have finished the design task or when you need to stop. "
+        "Include a brief summary of what was created or what went wrong."
+    ),
+    parameters_json_schema={
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "Brief description of what was created or accomplished",
+            },
+        },
+        "required": ["summary"],
+    },
+)
 
 
 @register("cad")
@@ -77,7 +143,9 @@ class CADAgent:
         self.executor = executor
         self.loop = AgenticLoop(
             client,
-            system_instruction=CAD_AGENT_PROMPT,
+            system_instruction=CAD_SYSTEM_INSTRUCTION,   # base + CAD addendum
+            max_turns=50,
+            extra_declarations=[TASK_COMPLETE_DECLARATION],
         )
         self.state = None  # active ProcedureState, if running a skill
 
@@ -155,7 +223,7 @@ class CADAgent:
             print(f"[CAD Agent] {self.state.progress}: {step_label}")
 
             # Build a prompt for this specific step
-            prompt = self._build_step_prompt(step, task.params)
+            prompt = self._build_step_prompt(step, task.params, i, len(steps))
             self.loop.agentic_loop(prompt, self.executor)
             self.state.advance()
 
@@ -168,9 +236,9 @@ class CADAgent:
         self.loop.agentic_loop(prompt, self.executor)
 
     def _build_prompt(self, task: Task) -> str:
-        """Build a task prompt for the agentic loop.
+        """Build a task prompt for the agentic loop (freeform mode).
 
-        NOTE: CAD_AGENT_PROMPT is already set as the loop's system_instruction,
+        NOTE: CAD_SYSTEM_INSTRUCTION is the loop's system_instruction,
         so we only include the task-specific details here.
         """
         parts = [f"## Current Task\n{task.description}\n"]
@@ -183,10 +251,17 @@ class CADAgent:
                 parts.append(f"- {label}: {value}")
             parts.append("")
 
-        parts.append("Begin working on this task now. Start by checking if FreeCAD is open.")
+        parts.append(
+            "Begin working on this task now. Follow the CAD Design Workflow:\n"
+            "1. First minimize the terminal with system_shortcut(\"minimize_window\")\n"
+            "2. Then check the screenshot — is FreeCAD open?\n"
+            "3. Proceed through the design steps visually.\n"
+            "4. When done, call task_complete() with a summary."
+        )
         return "\n".join(parts)
 
-    def _build_step_prompt(self, step: dict, params: dict) -> str:
+    def _build_step_prompt(self, step: dict, params: dict,
+                           step_idx: int, total_steps: int) -> str:
         """Build a prompt for a single skill step.
 
         Handles three formats:
@@ -194,29 +269,43 @@ class CADAgent:
         2. Sub-skill references (skill key) — delegates to another skill
         3. Simple actions (shortcut/type/key/click/wait) — direct executor calls
 
-        NOTE: CAD_AGENT_PROMPT is already the loop's system_instruction.
+        NOTE: CAD_SYSTEM_INSTRUCTION is the loop's system_instruction.
         """
         parts = []
 
         if "title" in step:
             # Rich step from a detailed YAML skill
-            parts.append(f"## Step {step.get('step_number', '?')}: {step['title']}")
+            parts.append(
+                f"## Skill Step {step.get('step_number', step_idx + 1)}"
+                f" of {total_steps}: {step['title']}"
+            )
+            parts.append(
+                "\nYou are executing a guided skill. Follow the substeps below "
+                "IN ORDER. Look at the screenshot to find the relevant UI elements "
+                "and click on them. Do NOT skip substeps."
+            )
             parts.append(f"\n{step.get('description', '')}")
 
             substeps = step.get("substeps", [])
             if substeps:
-                parts.append("\n### What to do:")
+                parts.append("\n### Substeps — execute these in order:")
                 for i, s in enumerate(substeps, 1):
                     parts.append(f"  {i}. {s}")
 
             if step.get("commands"):
-                parts.append(f"\n### Commands/Keys: {step['commands']}")
+                parts.append(f"\n### Relevant Commands/Keys: {step['commands']}")
 
             if step.get("settings"):
-                parts.append(f"\n### Settings: {step['settings']}")
+                parts.append(f"\n### Expected Settings: {step['settings']}")
 
             if step.get("gotchas"):
                 parts.append(f"\n### Watch out: {step['gotchas']}")
+
+            parts.append(
+                "\nWhen you have completed ALL substeps above, stop calling "
+                "functions and just say 'Step complete' so we can move to the "
+                "next step."
+            )
 
             # Resolve any {{param}} templates in the description
             resolved_text = "\n".join(parts)

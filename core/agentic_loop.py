@@ -111,6 +111,7 @@ class AgenticLoop:
         return "CONTINUE"
 
     def agentic_loop(self, prompt: str, executor: Executor):
+        self._turn_count = 0  # Reset per call so each invocation gets a fresh budget
         history = [types.Content(role='user', parts=[types.Part.from_text(text=prompt)])]
 
         while True:
@@ -125,8 +126,8 @@ class AgenticLoop:
                 if remaining <= 3 and remaining > 0:
                     warning = (
                         f"WARNING: You have {remaining} turns left. "
-                        f"Call report_findings() NOW with whatever data you have. "
-                        f"Do not search any more — report your partial findings immediately."
+                        f"Wrap up your current work and finish the task NOW. "
+                        f"Do not start any new operations — complete or report immediately."
                     )
                     history.append(types.Content(role='user', parts=[
                         types.Part.from_text(text=warning)
@@ -134,8 +135,8 @@ class AgenticLoop:
                     print(f"  [!] Turn warning injected: {remaining} turns left")
                 elif remaining == 0:
                     warning = (
-                        "FINAL TURN. You MUST call report_findings() right now. "
-                        "Report whatever you have found so far."
+                        "FINAL TURN. You MUST finish right now. "
+                        "Complete the task with whatever progress you have made."
                     )
                     history.append(types.Content(role='user', parts=[
                         types.Part.from_text(text=warning)
@@ -228,14 +229,14 @@ class AgenticLoop:
                             response=fc_response,
                         )
                     )
-                    if fc_response.get("status") == "research_complete":
+                    if fc_response.get("status") in ("research_complete", "task_complete"):
                         should_stop = True
 
             if response_parts:
                 history.append(types.Content(role='user', parts=response_parts))
 
             if should_stop:
-                termcolor.cprint("Research complete.", color="green")
+                termcolor.cprint("Task complete.", color="green")
                 break
 
     def config(self):
@@ -257,6 +258,9 @@ class AgenticLoop:
             max_output_tokens=8192,
             tools=[cu_tool, types.Tool(function_declarations=all_declarations)],
             thinking_config=types.ThinkingConfig(include_thoughts=True),
+            # Disable AFC — we handle function calls manually in the agentic loop.
+            # This suppresses the "Tools at indices [1] are not compatible with AFC" warning.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
 
     def get_model_response(self, history, max_retries=5, base_delay_s=1):
