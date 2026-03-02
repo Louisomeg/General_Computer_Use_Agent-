@@ -97,6 +97,12 @@ def execute_freecad_shortcut(shortcut_name: str) -> dict:
         response["warning"] = focus_warning
     return response
 
+def open_freecad() -> dict:
+    try:
+        subprocess.run(['freecad'], check=True)
+        return {"success": True}
+    except subprocess.CalledProcessError as e:
+        return {"error": str(e)}
 
 def open_application(app_name: str) -> dict:
     """Launch an application by name using the Ubuntu desktop launcher.

@@ -18,9 +18,9 @@ from agents.registry import register
 from core.agentic_loop import AgenticLoop
 from core.custom_tools import get_custom_declarations
 from core.executor import Executor
-from core.models import Task, TaskStatus, ProcedureState, load_skill, load_tutorial_skills
+from core.models import (ProcedureState, Task, TaskStatus, load_skill,
+                         load_tutorial_skills)
 from core.settings import SYSTEM_INSTRUCTION
-
 
 # ---------------------------------------------------------------------------
 # Shortcut filters — only include shortcuts the CAD agent actually needs.
@@ -413,7 +413,8 @@ class CADAgent:
             "     the default empty state), create a NEW document first:\n"
             "     freecad_shortcut(\"file_new\") (Ctrl+N). This gives you a clean start.\n"
             "     Do NOT try to modify or interact with existing geometry.\n"
-            "   If NO: use open_application(\"FreeCAD\"), then wait_5_seconds.\n\n"
+            "   If NO: use open_freecad(), then wait_5_seconds.\n
+                If NO: use open_application, then wait_5_seconds.\n\n"
 
             "3. Check if the Part Design workbench is active.\n"
             "   PREREQUISITE CHECK: Look at the menu bar at the very top of the window.\n"

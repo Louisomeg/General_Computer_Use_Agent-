@@ -2,11 +2,8 @@ from typing import Optional, Set
 
 from google.genai import types
 
-from core.settings import (
-    UBUNTU_SHORTCUTS,
-    FREECAD_SHORTCUTS,
-    EXCLUDED_PREDEFINED_FUNCTIONS,
-)
+from core.settings import (EXCLUDED_PREDEFINED_FUNCTIONS, FREECAD_SHORTCUTS,
+                           UBUNTU_SHORTCUTS)
 
 
 def _build_shortcut_description(shortcuts: dict, prefix: str) -> str:
@@ -152,6 +149,12 @@ def get_custom_declarations(
                 "required": ["name"],
             },
         ),
+        types.FunctionDeclaration(
+            name="open_freecad",
+            description=(
+                "Open freecad in particular. Use this function to open freecad and not open application"
+            )
+        )
     ]
 
     return declarations

@@ -1,15 +1,10 @@
 import subprocess
 import time
 
-from core.settings import (
-    SCREEN_WIDTH,
-    SCREEN_HEIGHT,
-    ACTION_DELAY,
-    TYPING_DELAY,
-    CLICK_DELAY,
-)
 from core import freecad_functions
 from core.executor import Executor
+from core.settings import (ACTION_DELAY, CLICK_DELAY, SCREEN_HEIGHT,
+                           SCREEN_WIDTH, TYPING_DELAY)
 
 
 class DesktopExecutor(Executor):
@@ -101,6 +96,7 @@ class DesktopExecutor(Executor):
             "right_click_at": self._right_click_at,
             "double_click_at": self._double_click_at,
             "open_application": self._open_application,
+            "open_freecad": self._open_freecad,
             # Completion signal
             "task_complete": self._task_complete,
         }
@@ -287,6 +283,9 @@ class DesktopExecutor(Executor):
     def _double_click_at(self, args: dict) -> dict:
         x, y = self.denormalize(args["x"], args["y"])
         return freecad_functions.double_click(x, y)
+
+    def _open_freecad(self) -> dict:
+        return freecad_functions.open_freecad()
 
     def _open_application(self, args: dict) -> dict:
         return freecad_functions.open_application(args["name"])

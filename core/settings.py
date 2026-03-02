@@ -67,6 +67,7 @@ UI elements to accomplish your goal. This is how a human uses a computer.
 ## When to Use Shortcuts (ONLY as exceptions)
 Keyboard shortcuts (system_shortcut, freecad_shortcut, key_combination) should ONLY
 be used in these specific cases:
+- open_freecad -- to launch freecad in particular(use it first, before using open_application)
 - open_application — to launch apps (this is a helper, use it first to open apps)
 - freecad_shortcut("edit_undo") — Ctrl+Z to undo mistakes in FreeCAD
 - key_combination("escape") — to cancel the active tool in FreeCAD
@@ -87,7 +88,7 @@ Instead, look at the screenshot and:
 If you need to open an application, follow these steps IN ORDER. Move to the next
 step ONLY if the previous one did not work.
 
-Step 1: Use open_application("AppName"), then wait_5_seconds.
+Step 1: Use open_freecad() or open_application("AppName"), then wait_5_seconds.
         Look at the screenshot — did a new window appear? If yes, you're done.
 
 Step 2: Look at the TASKBAR (the bar at the very top of the screen).

@@ -63,7 +63,7 @@ def test_logic():
     try:
         from core.freecad_functions import (
             execute_system_shortcut, execute_freecad_shortcut,
-            open_application, type_system_text,
+            open_application, type_system_text, open_freecad,
             system_click, right_click, double_click, system_scroll,
         )
         print(f"  [PASS] freecad_functions.py — all 8 functions importable")
@@ -80,7 +80,7 @@ def test_logic():
         assert len(declarations) == 5, f"Expected 5 declarations, got {len(declarations)}"
 
         names = [d.name for d in declarations]
-        expected_names = ["system_shortcut", "freecad_shortcut", "right_click_at", "double_click_at", "open_application"]
+        expected_names = ["system_shortcut", "freecad_shortcut", "right_click_at", "double_click_at", "open_application", "open_freecad"]
         assert names == expected_names, f"Declaration names mismatch: {names}"
 
         excluded = get_excluded_functions()
@@ -134,7 +134,7 @@ def test_logic():
         for name in ["click_at", "hover_at", "type_text_at", "key_combination",
                       "scroll_at", "scroll_document", "drag_and_drop", "wait_5_seconds",
                       "system_shortcut", "freecad_shortcut", "right_click_at",
-                      "double_click_at", "open_application", "task_complete"]:
+                      "double_click_at", "open_application", "open_freecad", "task_complete"]:
             handler = executor._get_handler(name)
             assert handler is not None, f"Missing handler for '{name}'"
 
