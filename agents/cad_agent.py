@@ -83,7 +83,7 @@ AGENT_CARD = {
 # CAD-specific ADDENDUM — extends the base SYSTEM_INSTRUCTION, not replaces it
 # ---------------------------------------------------------------------------
 # The base SYSTEM_INSTRUCTION (from core.settings) teaches the model:
-#   - coordinate system (0-999 normalized)
+#   - coordinate system (screenshot pixel coordinates, auto-scaled to screen)
 #   - visual-first navigation (look at screenshot, click visible elements)
 #   - GNOME desktop navigation (Activities, taskbar, app grid)
 #   - 5-step application launch procedure
@@ -449,9 +449,10 @@ class CADAgent:
             "      In the dropdown, hover over \"Sketcher geometries\" (a submenu arrow appears).\n"
             "      In the submenu that opens to the right, click \"Rectangle\".\n"
             "      If the submenu does not appear, try clicking \"Sketcher geometries\" instead.\n"
-            "   b. Click the FIRST corner in the upper-left area of the viewport (around x=250, y=300).\n"
-            "      IMPORTANT: stay AWAY from the center where the red and green axis lines cross.\n"
-            "   c. Click the SECOND corner, offset down-right from the first (around x=450, y=500).\n"
+            "   b. Click the FIRST corner in the upper-left area of the viewport.\n"
+            "      Look at the screenshot — place the click ABOVE and LEFT of the center\n"
+            "      origin where the red and green axis lines cross. Stay away from those lines.\n"
+            "   c. Click the SECOND corner, offset down-right from the first click.\n"
             "      This creates an approximate rectangle. Exact size does not matter yet.\n"
             "   d. Press key_combination(\"escape\") to exit the rectangle tool.\n"
             "   e. Now add a WIDTH constraint:\n"

@@ -113,9 +113,9 @@ IMPORTANT: At each step, LOOK at the screenshot to verify what happened before
 moving to the next step. Never skip steps or assume something worked without checking.
 
 ## Coordinate System
-- All coordinates use a NORMALIZED 0-999 range.
-- (0, 0) = top-left corner, (999, 999) = bottom-right corner.
-- The system converts these to actual pixel coordinates automatically.
+- Coordinates are PIXEL positions in the screenshot image you see.
+- (0, 0) = top-left corner of the screenshot.
+- The system automatically scales these to the actual screen resolution.
 - Look at the screenshot carefully to estimate where UI elements are located.
 
 ## Action Guidelines

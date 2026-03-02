@@ -9,7 +9,7 @@ import sys
 
 
 def test_logic():
-    """Test all imports, dict sizes, denormalization, and handler lookup.
+    """Test all imports, dict sizes, coordinate mapping, and handler lookup.
     Works on any OS — no xdotool needed.
     """
     print("=" * 60)
@@ -105,16 +105,30 @@ def test_logic():
         executor = DesktopExecutor()
         assert executor.screen_width == 1920
         assert executor.screen_height == 1080
+        assert executor.model_width == 1280
+        assert executor.model_height == 720
 
-        # Denormalize tests
-        assert executor.denormalize(0, 1920) == 0
-        assert executor.denormalize(500, 1920) == 960
-        assert executor.denormalize(999, 1920) == 1918
-        assert executor.denormalize(500, 1080) == 540
+        # Coordinate mapping tests (image pixels -> screen pixels)
+        # With 1280x720 model and 1920x1080 screen, scale factor is 1.5x
+        sx, sy = executor.to_screen_coords(0, 0)
+        assert sx == 0 and sy == 0, f"Origin should map to (0,0), got ({sx},{sy})"
 
-        # Custom screen size
-        executor2 = DesktopExecutor(screen_width=2560, screen_height=1440)
-        assert executor2.denormalize(500, 2560) == 1280
+        sx, sy = executor.to_screen_coords(640, 360)
+        assert sx == 960 and sy == 540, f"Center should map to (960,540), got ({sx},{sy})"
+
+        sx, sy = executor.to_screen_coords(1280, 720)
+        assert sx == 1920 and sy == 1080, f"Max should map to (1920,1080), got ({sx},{sy})"
+
+        # Typical menu click: model x=171 -> screen x=256 (171*1920/1280)
+        sx, sy = executor.to_screen_coords(171, 33)
+        assert sx == int(171 * 1920 / 1280), f"Menu x mismatch: got {sx}"
+        assert sy == int(33 * 1080 / 720), f"Menu y mismatch: got {sy}"
+
+        # Custom screen/model sizes
+        executor2 = DesktopExecutor(screen_width=2560, screen_height=1440,
+                                    model_width=1280, model_height=720)
+        sx, sy = executor2.to_screen_coords(640, 360)
+        assert sx == 1280 and sy == 720, f"Custom size center: got ({sx},{sy})"
 
         # Handler lookup
         for name in ["click_at", "hover_at", "type_text_at", "key_combination",
@@ -127,7 +141,7 @@ def test_logic():
         # Unknown function returns None
         assert executor._get_handler("nonexistent_function") is None
 
-        print(f"  [PASS] desktop_executor.py — class, denormalize, 13 handlers verified")
+        print(f"  [PASS] desktop_executor.py — class, to_screen_coords, 13 handlers verified")
         passed += 1
     except Exception as e:
         print(f"  [FAIL] desktop_executor.py — {e}")
