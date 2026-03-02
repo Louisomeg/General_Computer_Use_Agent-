@@ -83,7 +83,7 @@ AGENT_CARD = {
 # CAD-specific ADDENDUM — extends the base SYSTEM_INSTRUCTION, not replaces it
 # ---------------------------------------------------------------------------
 # The base SYSTEM_INSTRUCTION (from core.settings) teaches the model:
-#   - coordinate system (screenshot pixel coordinates, auto-scaled to screen)
+#   - coordinate system (0-1000 normalized grid, denormalized to screen pixels)
 #   - visual-first navigation (look at screenshot, click visible elements)
 #   - GNOME desktop navigation (Activities, taskbar, app grid)
 #   - 5-step application launch procedure

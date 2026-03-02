@@ -4,8 +4,6 @@ import time
 from core.settings import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
-    MODEL_SCREEN_WIDTH,
-    MODEL_SCREEN_HEIGHT,
     ACTION_DELAY,
     TYPING_DELAY,
     CLICK_DELAY,
@@ -22,29 +20,34 @@ class DesktopExecutor(Executor):
     All actions are performed through xdotool subprocess calls.
 
     Coordinate mapping:
-        The Gemini computer-use model outputs coordinates as pixel positions
-        in the screenshot image (MODEL_SCREEN_WIDTH x MODEL_SCREEN_HEIGHT).
-        We scale these to the actual screen resolution (SCREEN_WIDTH x SCREEN_HEIGHT)
-        before sending them to xdotool.
+        The Gemini computer-use model outputs coordinates on a normalized
+        0-1000 grid (x and y each range from 0 to ~999). These are
+        proportional to the screenshot the model sees, regardless of its
+        pixel dimensions.  We denormalize them to the actual screen
+        resolution (SCREEN_WIDTH x SCREEN_HEIGHT) before sending to xdotool.
+
+        Formula:  screen_x = int(normalized_x / 1000 * SCREEN_WIDTH)
+
+        Google recommends a display resolution of 1440x900 for best results.
+        The closest available VM resolution is 1280x800 (same 16:10 aspect).
     """
 
-    def __init__(self, screen_width: int = None, screen_height: int = None,
-                 model_width: int = None, model_height: int = None):
+    def __init__(self, screen_width: int = None, screen_height: int = None):
         self.screen_width = screen_width or SCREEN_WIDTH
         self.screen_height = screen_height or SCREEN_HEIGHT
-        self.model_width = model_width or MODEL_SCREEN_WIDTH
-        self.model_height = model_height or MODEL_SCREEN_HEIGHT
 
-    def to_screen_coords(self, model_x: int, model_y: int) -> tuple:
-        """Convert model output coordinates (screenshot pixels) to actual screen pixels.
+    def denormalize(self, x: int, y: int) -> tuple:
+        """Convert normalized 0-1000 coordinates to actual screen pixels.
 
-        The model sees a screenshot at model_width x model_height (e.g. 1280x720)
-        and outputs pixel positions within that image. We scale to the actual
-        screen resolution (e.g. 1920x1080) for xdotool.
+        The Gemini computer-use model outputs coordinates on a 1000x1000 grid
+        regardless of the screenshot resolution. We scale these to the actual
+        screen resolution for xdotool.
+
+        Example: x=500 on a 1280-wide screen → 500/1000 * 1280 = 640 (center).
         """
-        screen_x = int(model_x * self.screen_width / self.model_width)
-        screen_y = int(model_y * self.screen_height / self.model_height)
-        print(f"     Coords: model({model_x}, {model_y}) -> screen({screen_x}, {screen_y})")
+        screen_x = int(x / 1000 * self.screen_width)
+        screen_y = int(y / 1000 * self.screen_height)
+        print(f"     Coords: normalized({x}, {y}) -> screen({screen_x}, {screen_y})")
         return screen_x, screen_y
 
     def execute(self, function_calls) -> list:
@@ -108,19 +111,19 @@ class DesktopExecutor(Executor):
     # =========================================================================
 
     def _click_at(self, args: dict) -> dict:
-        x, y = self.to_screen_coords(args["x"], args["y"])
+        x, y = self.denormalize(args["x"], args["y"])
         subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
         subprocess.run(["xdotool", "click", "1"], check=True)
         time.sleep(CLICK_DELAY)
         return {"success": True}
 
     def _hover_at(self, args: dict) -> dict:
-        x, y = self.to_screen_coords(args["x"], args["y"])
+        x, y = self.denormalize(args["x"], args["y"])
         subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
         return {"success": True}
 
     def _type_text_at(self, args: dict) -> dict:
-        x, y = self.to_screen_coords(args["x"], args["y"])
+        x, y = self.denormalize(args["x"], args["y"])
         text = args["text"]
         press_enter = args.get("press_enter", True)
         clear_before = args.get("clear_before_typing", True)
@@ -206,7 +209,7 @@ class DesktopExecutor(Executor):
         return {"success": True}
 
     def _scroll_at(self, args: dict) -> dict:
-        x, y = self.to_screen_coords(args["x"], args["y"])
+        x, y = self.denormalize(args["x"], args["y"])
         direction = args["direction"]
         magnitude = args.get("magnitude", 500)
 
@@ -247,8 +250,8 @@ class DesktopExecutor(Executor):
         return {"success": True}
 
     def _drag_and_drop(self, args: dict) -> dict:
-        start_x, start_y = self.to_screen_coords(args["x"], args["y"])
-        end_x, end_y = self.to_screen_coords(args["destination_x"], args["destination_y"])
+        start_x, start_y = self.denormalize(args["x"], args["y"])
+        end_x, end_y = self.denormalize(args["destination_x"], args["destination_y"])
 
         subprocess.run(
             ["xdotool", "mousemove", str(start_x), str(start_y)],
@@ -278,11 +281,11 @@ class DesktopExecutor(Executor):
         return freecad_functions.execute_freecad_shortcut(args["shortcut_name"])
 
     def _right_click_at(self, args: dict) -> dict:
-        x, y = self.to_screen_coords(args["x"], args["y"])
+        x, y = self.denormalize(args["x"], args["y"])
         return freecad_functions.right_click(x, y)
 
     def _double_click_at(self, args: dict) -> dict:
-        x, y = self.to_screen_coords(args["x"], args["y"])
+        x, y = self.denormalize(args["x"], args["y"])
         return freecad_functions.double_click(x, y)
 
     def _open_application(self, args: dict) -> dict:

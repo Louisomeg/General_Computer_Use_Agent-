@@ -28,8 +28,8 @@ def test_logic():
         assert len(UBUNTU_SHORTCUTS) >= 80, f"Expected 80+ Ubuntu shortcuts, got {len(UBUNTU_SHORTCUTS)}"
         assert len(FREECAD_SHORTCUTS) >= 50, f"Expected 50+ FreeCAD shortcuts, got {len(FREECAD_SHORTCUTS)}"
         assert len(EXCLUDED_PREDEFINED_FUNCTIONS) == 5
-        assert SCREEN_WIDTH == 1920
-        assert SCREEN_HEIGHT == 1080
+        assert SCREEN_WIDTH == 1280
+        assert SCREEN_HEIGHT == 800
 
         # Check two-key sequences exist
         two_key = [k for k, v in FREECAD_SHORTCUTS.items() if isinstance(v["keys"], list)]
@@ -103,45 +103,45 @@ def test_logic():
         from core.desktop_executor import DesktopExecutor
 
         executor = DesktopExecutor()
-        assert executor.screen_width == 1920
-        assert executor.screen_height == 1080
-        assert executor.model_width == 1280
-        assert executor.model_height == 720
+        assert executor.screen_width == 1280
+        assert executor.screen_height == 800
 
-        # Coordinate mapping tests (image pixels -> screen pixels)
-        # With 1280x720 model and 1920x1080 screen, scale factor is 1.5x
-        sx, sy = executor.to_screen_coords(0, 0)
+        # Denormalize tests: 0-1000 normalized → actual screen pixels
+        # Screen is 1280x800.
+        sx, sy = executor.denormalize(0, 0)
         assert sx == 0 and sy == 0, f"Origin should map to (0,0), got ({sx},{sy})"
 
-        sx, sy = executor.to_screen_coords(640, 360)
-        assert sx == 960 and sy == 540, f"Center should map to (960,540), got ({sx},{sy})"
+        sx, sy = executor.denormalize(500, 500)
+        assert sx == 640 and sy == 400, f"Center should map to (640,400), got ({sx},{sy})"
 
-        sx, sy = executor.to_screen_coords(1280, 720)
-        assert sx == 1920 and sy == 1080, f"Max should map to (1920,1080), got ({sx},{sy})"
+        sx, sy = executor.denormalize(999, 999)
+        expected_x = int(999 / 1000 * 1280)  # 1278
+        expected_y = int(999 / 1000 * 800)    # 799
+        assert sx == expected_x and sy == expected_y, \
+            f"Max should map to ({expected_x},{expected_y}), got ({sx},{sy})"
 
-        # Typical menu click: model x=171 -> screen x=256 (171*1920/1280)
-        sx, sy = executor.to_screen_coords(171, 33)
-        assert sx == int(171 * 1920 / 1280), f"Menu x mismatch: got {sx}"
-        assert sy == int(33 * 1080 / 720), f"Menu y mismatch: got {sy}"
+        # Typical menu click: normalized x=133 → 133/1000*1280 = 170 (Part Design)
+        sx, sy = executor.denormalize(133, 25)
+        assert sx == int(133 / 1000 * 1280), f"Menu x mismatch: got {sx}"
+        assert sy == int(25 / 1000 * 800), f"Menu y mismatch: got {sy}"
 
-        # Custom screen/model sizes
-        executor2 = DesktopExecutor(screen_width=2560, screen_height=1440,
-                                    model_width=1280, model_height=720)
-        sx, sy = executor2.to_screen_coords(640, 360)
-        assert sx == 1280 and sy == 720, f"Custom size center: got ({sx},{sy})"
+        # Custom screen size (e.g. 1440x900 recommended)
+        executor2 = DesktopExecutor(screen_width=1440, screen_height=900)
+        sx, sy = executor2.denormalize(500, 500)
+        assert sx == 720 and sy == 450, f"Custom center: got ({sx},{sy})"
 
-        # Handler lookup
+        # Handler lookup (14 handlers including task_complete)
         for name in ["click_at", "hover_at", "type_text_at", "key_combination",
                       "scroll_at", "scroll_document", "drag_and_drop", "wait_5_seconds",
                       "system_shortcut", "freecad_shortcut", "right_click_at",
-                      "double_click_at", "open_application"]:
+                      "double_click_at", "open_application", "task_complete"]:
             handler = executor._get_handler(name)
             assert handler is not None, f"Missing handler for '{name}'"
 
         # Unknown function returns None
         assert executor._get_handler("nonexistent_function") is None
 
-        print(f"  [PASS] desktop_executor.py — class, to_screen_coords, 13 handlers verified")
+        print(f"  [PASS] desktop_executor.py — class, denormalize, 14 handlers verified")
         passed += 1
     except Exception as e:
         print(f"  [FAIL] desktop_executor.py — {e}")

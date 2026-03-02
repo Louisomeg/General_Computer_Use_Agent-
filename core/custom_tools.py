@@ -87,46 +87,47 @@ def get_custom_declarations(
                 "required": ["shortcut_name"],
             },
         ),
-        # 3. Right-click at screenshot pixel coordinates
+        # 3. Right-click at normalized coordinates (0-1000 grid)
         types.FunctionDeclaration(
             name="right_click_at",
             description=(
                 "Perform a right-click at the specified coordinates to open "
-                "context menus. Coordinates are pixel positions in the screenshot."
+                "context menus. Coordinates use the same 0-1000 normalized grid "
+                "as click_at."
             ),
             parameters_json_schema={
                 "type": "object",
                 "properties": {
                     "x": {
                         "type": "integer",
-                        "description": "X pixel coordinate in the screenshot",
+                        "description": "X coordinate (0-1000 normalized)",
                     },
                     "y": {
                         "type": "integer",
-                        "description": "Y pixel coordinate in the screenshot",
+                        "description": "Y coordinate (0-1000 normalized)",
                     },
                 },
                 "required": ["x", "y"],
             },
         ),
-        # 4. Double-click at screenshot pixel coordinates
+        # 4. Double-click at normalized coordinates (0-1000 grid)
         types.FunctionDeclaration(
             name="double_click_at",
             description=(
                 "Perform a double-click at the specified coordinates to "
-                "select or activate elements. Coordinates are pixel positions "
-                "in the screenshot."
+                "select or activate elements. Coordinates use the same 0-1000 "
+                "normalized grid as click_at."
             ),
             parameters_json_schema={
                 "type": "object",
                 "properties": {
                     "x": {
                         "type": "integer",
-                        "description": "X pixel coordinate in the screenshot",
+                        "description": "X coordinate (0-1000 normalized)",
                     },
                     "y": {
                         "type": "integer",
-                        "description": "Y pixel coordinate in the screenshot",
+                        "description": "Y coordinate (0-1000 normalized)",
                     },
                 },
                 "required": ["x", "y"],

@@ -2,17 +2,19 @@
 # General Engineering Agent — Settings & Configuration
 # =============================================================================
 
-# Actual screen dimensions (Ubuntu VM) — used for xdotool coordinate mapping
-SCREEN_WIDTH = 1920
-SCREEN_HEIGHT = 1080
+# Actual screen dimensions (Ubuntu VM) — used for xdotool coordinate mapping.
+# Google recommends 1440x900 for the Computer Use model.  The closest
+# available VM resolution is 1280x800 (same 16:10 aspect ratio).
+# IMPORTANT: Change these if you change the VM display resolution.
+SCREEN_WIDTH = 1280
+SCREEN_HEIGHT = 800
 
-# Model-optimal screenshot resolution for computer-use.
-# IMPORTANT: Must maintain the same aspect ratio as the native screen (16:9)
-# to avoid distorting the image the model sees. A distorted image makes small
-# targets (menus, toolbar icons) harder to localize accurately.
-# Native is 1920x1080 (16:9) → use 1280x720 (16:9) as the resized target.
+# Screenshot resolution sent to the model.
+# Set equal to SCREEN dimensions for 1:1 pixel mapping (no resize needed).
+# If different from SCREEN, screenshots are resized before sending to the model.
+# Must maintain the same aspect ratio as SCREEN to avoid distortion.
 MODEL_SCREEN_WIDTH = 1280
-MODEL_SCREEN_HEIGHT = 720
+MODEL_SCREEN_HEIGHT = 800
 
 # Timing constants (seconds unless noted)
 ACTION_DELAY = 1.0              # Pause after each action for UI settling (FreeCAD is slow)
@@ -113,9 +115,11 @@ IMPORTANT: At each step, LOOK at the screenshot to verify what happened before
 moving to the next step. Never skip steps or assume something worked without checking.
 
 ## Coordinate System
-- Coordinates are PIXEL positions in the screenshot image you see.
-- (0, 0) = top-left corner of the screenshot.
-- The system automatically scales these to the actual screen resolution.
+- Coordinates use a NORMALIZED 0-1000 grid for both X and Y.
+- (0, 0) = top-left corner of the screen.
+- (500, 500) = center of the screen.
+- (999, 999) = bottom-right corner of the screen.
+- The system automatically converts these to actual screen pixels.
 - Look at the screenshot carefully to estimate where UI elements are located.
 
 ## Action Guidelines
