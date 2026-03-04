@@ -198,7 +198,7 @@ class ResearchAgent:
     # pro figures out what to search for so flash doesnt waste turns
     # typing dumb queries into google.
 
-    def plan_research(self, query: str) -> Optional[str]:
+    def plan_research(self, query: str) -> str:
         """ask gemini pro to make a plan. returns sub-questions + search queries."""
         print(f"\n{'='*60}")
         print(f"PLANNING with {PLANNING_MODEL}")
@@ -283,8 +283,9 @@ DONE WHEN:
                     model_name=BROWSER_MODEL,
                     config=self.build_agent_config(),
                 )
-                turns_used = loop.agentic_loop(full_prompt, browser, max_turns)
+                turn_count = loop.agentic_loop(full_prompt, browser, max_turns)
                 self.findings = browser.research_findings
+                turns_used = turn_count
         except Exception as e:
             # browser crashed or api died — save whatever we got
             print(f"something went wrong: {e}")
@@ -423,21 +424,20 @@ SUB-QUERY 3: [specific searchable question]"""
             )
             text = resp.text
             print(f"\nParallel plan:\n{text}")
+
             # pull the sub-queries out of pro's response
             sub_queries = []
+            for line in text.strip().split("\n"):
+                line = line.strip()
+                if line.upper().startswith("SUB-QUERY") and ":" in line:
+                    q = line.split(":", 1)[1].strip()
+                    if q:
+                        sub_queries.append(q)
+
             # if we couldnt parse anything just run the whole query as one worker
-            if not text:
+            if not sub_queries:
                 sub_queries = [query]
-            else:
-                for line in text.strip().split("\n"):
-                    line = line.strip()
-                    if line.upper().startswith("SUB-QUERY") and ":" in line:
-                        q = line.split(":", 1)[1].strip()
-                        if q:
-                            sub_queries.append(q)
-
             return sub_queries[:num_workers]
-
 
         except Exception as e:
             print(f"Parallel planning failed ({e}), just running as one query")
@@ -619,7 +619,7 @@ SUB-QUERY 3: [specific searchable question]"""
     # every research, but you can also call it separately on old results.
     # uses fpdf2 — installs itself if you dont have it.
 
-    def generate_pdf(self, result: Optional[dict] = None, filepath: Optional[str] = None) -> Optional[Path]:
+    def generate_pdf(self, result: dict = None, filepath: str = None) -> Path:
         """
         make a nice looking pdf report from the research results.
         if you dont pass a result dict it'll use the most recent json file.
@@ -641,8 +641,8 @@ SUB-QUERY 3: [specific searchable question]"""
             )
             if not jsons:
                 print("no research results found — run a research first")
+                return None
             result = json.loads(jsons[-1].read_text())
-            return None
 
         f = result["findings"]
         m = result["metadata"]
@@ -799,28 +799,20 @@ SUB-QUERY 3: [specific searchable question]"""
         )
 
         # --- save the pdf ---
-        # 1. Normalize the input: whether 'filepath' is a string or None, we make it a Path object
-        output_path = Path(filepath) if filepath else None
-
-        if output_path is None:
-            # Sanitize the query for the filename
+        if filepath is None:
             safe = "".join(c if c.isalnum() or c == " " else "_" for c in query[:40])
-            filename = f"report_{safe.strip().replace(' ', '_')}_{datetime.now():%Y%m%d_%H%M%S}.pdf"
-            
-            # Ensure OUTPUT_DIR is a Path so the / operator works correctly
-            output_path = Path(OUTPUT_DIR) / filename
+            filepath = (
+                OUTPUT_DIR
+                / f"report_{safe.strip().replace(' ','_')}_{datetime.now():%Y%m%d_%H%M%S}.pdf"
+            )
+        filepath = Path(filepath)
+        pdf.output(str(filepath))
+        print(f"\nPDF report saved: {filepath}")
+        return filepath
 
-        # 2. Defensive check: Create the folder if it doesn't exist (prevents FileNotFoundError)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # 3. CRITICAL: fpdf usually requires a string, not a Path object
-        pdf.output(str(output_path))
-
-        print(f"\nPDF report saved: {output_path}")
-
-        # 4. Return as a string if your calling function expects a string
-        return output_path
-    def build_agent_config(self) -> dict[str, Any]:
+    def build_agent_config(
+        self,
+    ) -> dict[str, Any]:
         cu_tool = types.Tool(
             computer_use=types.ComputerUse(
                 environment=types.Environment.ENVIRONMENT_BROWSER
