@@ -239,20 +239,19 @@ class AgenticLoop(BaseAgenticLoop):
                     content.parts.remove(part)
 
     def config(self):
-        return GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTION,
-            temperature=1,
-            top_p=0.95,
-            top_k=40,
-            max_output_tokens=8192,
-            thinking_config=types.ThinkingConfig(include_thoughts=True),
-            # Disable AFC — we handle function calls manually in the agentic loop.
-            # This suppresses the "Tools at indices [1] are not compatible with AFC" warning.
-            automatic_function_calling=types.AutomaticFunctionCallingConfig(
+        final_config = {
+            "system_instruction": SYSTEM_INSTRUCTION,
+            "temperature": 1,
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 8192,
+            "thinking_config": types.ThinkingConfig(include_thoughts=True),
+            "automatic_function_calling": types.AutomaticFunctionCallingConfig(
                 disable=True
             ),
-            **self._config,
-        )
+            **self._config,  # This overrides anything above it if keys match
+        }
+        return GenerateContentConfig(**final_config)
 
     def get_model_response(
         self, max_retries: int = 5, base_delay_s: int = 1
