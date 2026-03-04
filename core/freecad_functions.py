@@ -99,7 +99,9 @@ def execute_freecad_shortcut(shortcut_name: str) -> dict:
 def open_freecad() -> dict:
     try:
         subprocess.Popen(
-            ["./appimages/FreeCAD_1.0.0-conda-Linux-x86_64-py311.AppImage"],
+            [
+                "/home/louismensah227/appimages/FreeCAD_1.0.0-conda-Linux-x86_64-py311.AppImage"
+            ],
             start_new_session=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

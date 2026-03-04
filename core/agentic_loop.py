@@ -238,7 +238,7 @@ class AgenticLoop(BaseAgenticLoop):
                 for part in parts_to_remove:
                     content.parts.remove(part)
 
-    def config(self):
+    def config(self) -> GenerateContentConfig:
         final_config = {
             "system_instruction": SYSTEM_INSTRUCTION,
             "temperature": 1,
@@ -249,7 +249,7 @@ class AgenticLoop(BaseAgenticLoop):
             "automatic_function_calling": types.AutomaticFunctionCallingConfig(
                 disable=True
             ),
-            **self._config,  # This overrides anything above it if keys match
+            **self._config,
         }
         return GenerateContentConfig(**final_config)
 
@@ -277,7 +277,7 @@ class AgenticLoop(BaseAgenticLoop):
                     time.sleep(delay)
                 else:
                     raise
-        assert False  # the loop should never reach here
+        raise
 
     def get_text(self, candidate: Candidate) -> Optional[str]:
         if not candidate.content or not candidate.content.parts:
