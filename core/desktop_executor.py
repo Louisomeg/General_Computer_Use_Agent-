@@ -81,6 +81,7 @@ class DesktopExecutor(Executor):
                 result = {"error": str(e)}
 
             time.sleep(ACTION_DELAY)
+            result["url"] = "local://desktop"
             results.append((function_name, result))
 
         return results

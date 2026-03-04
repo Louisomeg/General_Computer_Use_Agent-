@@ -93,7 +93,8 @@ class AgenticLoop(BaseAgenticLoop):
             # to save context window
             self.clean_old_screenshots()
 
-        termcolor.cprint(f"Max turns ({self.max_turns}) reached.", color="yellow")
+        if turn_count + 1 == max_turns:
+            termcolor.cprint(f"Max turns ({self.max_turns}) reached.", color="yellow")
 
         return turn_count
 
