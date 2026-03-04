@@ -16,23 +16,28 @@ manager wanted more websites covered so thats what this does.
 
 last updated: 27 feb 2026 - emmanuel
 """
+
 import json
-import time
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from google import genai
+from google.genai import types
 
+from agents.cad_agent import TASK_COMPLETE_DECLARATION
 from agents.registry import register
-from core.agentic_loop import AgenticLoop, REPORT_FINDINGS_DECLARATION
+from core.agentic_loop import AgenticLoop
 from core.browser_executor import BrowserExecutor
+from core.custom_tools import get_custom_declarations
 from core.models import Task, TaskStatus
 
 # documentation agent runs after us to make proper reports
 try:
     from agents.documentation_agent import DocumentationAgent
+
     HAS_DOC_AGENT = True
 except ImportError:
     HAS_DOC_AGENT = False
@@ -170,8 +175,8 @@ class ResearchAgent:
 
     def __init__(self, client: genai.Client):
         self.client = client
-        self.research_plan = None   # gets set when we call plan_research
-        self.findings = None        # gets set after the browser does its thing
+        self.research_plan = None  # gets set when we call plan_research
+        self.findings = None  # gets set after the browser does its thing
 
     def execute(self, task: Task) -> Task:
         """Standard agent interface — run research from a Task object."""
@@ -193,7 +198,7 @@ class ResearchAgent:
     # pro figures out what to search for so flash doesnt waste turns
     # typing dumb queries into google.
 
-    def plan_research(self, query: str) -> str:
+    def plan_research(self, query: str) -> Optional[str]:
         """ask gemini pro to make a plan. returns sub-questions + search queries."""
         print(f"\n{'='*60}")
         print(f"PLANNING with {PLANNING_MODEL}")
@@ -226,19 +231,23 @@ DONE WHEN:
 - [criteria including "data from 2-3 independent sources"]"""
 
         try:
-            resp = self.client.models.generate_content(model=PLANNING_MODEL, contents=prompt)
+            resp = self.client.models.generate_content(
+                model=PLANNING_MODEL, contents=prompt
+            )
             print(f"\nPlan:\n{resp.text}")
             return resp.text
         except Exception as e:
             # pro crashed or rate limited — no big deal, we have a backup plan
             print(f"Planning failed ({e}), using a basic fallback plan")
-            return (f"SUB-QUESTIONS:\n1. Key specs for {query}\n2. Relevant standards\n3. Typical values\n\n"
-                    f"SEARCH QUERIES:\n- {query} specifications\n- {query} technical data sheet\n"
-                    f"- {query} ISO standard\n- {query} engineering reference\n\n"
-                    f"BEST WEBSITES TO CHECK DIRECTLY:\n"
-                    f"- https://en.wikipedia.org\n- https://www.engineeringtoolbox.com\n"
-                    f"- https://www.engineersedge.com\n\n"
-                    f"DONE WHEN:\n- Data confirmed from 2-3 sources")
+            return (
+                f"SUB-QUESTIONS:\n1. Key specs for {query}\n2. Relevant standards\n3. Typical values\n\n"
+                f"SEARCH QUERIES:\n- {query} specifications\n- {query} technical data sheet\n"
+                f"- {query} ISO standard\n- {query} engineering reference\n\n"
+                f"BEST WEBSITES TO CHECK DIRECTLY:\n"
+                f"- https://en.wikipedia.org\n- https://www.engineeringtoolbox.com\n"
+                f"- https://www.engineersedge.com\n\n"
+                f"DONE WHEN:\n- Data confirmed from 2-3 sources"
+            )
 
     # ─── SINGLE BROWSER RUN ─────────────────────────────────────────────
     # the standard mode. one browser, one question, does everything start to finish.
@@ -272,22 +281,19 @@ DONE WHEN:
                 loop = AgenticLoop(
                     client=self.client,
                     model_name=BROWSER_MODEL,
-                    system_instruction=RESEARCH_PROMPT,
-                    screenshot_fn=browser.take_screenshot,
-                    extra_declarations=[REPORT_FINDINGS_DECLARATION],
-                    max_turns=max_turns,
-                    use_browser_environment=True,
+                    config=self.build_agent_config(),
                 )
-                loop.agentic_loop(full_prompt, browser)
+                turns_used = loop.agentic_loop(full_prompt, browser, max_turns)
                 self.findings = browser.research_findings
-                turns_used = loop.turn_count
         except Exception as e:
             # browser crashed or api died — save whatever we got
             print(f"something went wrong: {e}")
             self.findings = {
                 "summary": f"Research got interrupted: {str(e)[:200]}",
-                "data_points": [], "sources": [],
-                "confidence": "low", "gaps": ["research was cut short by an error"],
+                "data_points": [],
+                "sources": [],
+                "confidence": "low",
+                "gaps": ["research was cut short by an error"],
             }
 
         # package it all up into a nice dict
@@ -327,7 +333,9 @@ DONE WHEN:
     #
     # the manager said we werent hitting enough websites — well now we are.
 
-    def _run_single_worker(self, sub_query, worker_id, max_turns, headless, results_list):
+    def _run_single_worker(
+        self, sub_query, worker_id, max_turns, headless, results_list
+    ):
         """
         one thread, one browser, one sub-question.
         dont call this yourself — run_parallel handles the threading.
@@ -357,13 +365,9 @@ DONE WHEN:
                 loop = AgenticLoop(
                     client=self.client,
                     model_name=BROWSER_MODEL,
-                    system_instruction=RESEARCH_PROMPT,
-                    screenshot_fn=browser.take_screenshot,
-                    extra_declarations=[REPORT_FINDINGS_DECLARATION],
-                    max_turns=max_turns,
-                    use_browser_environment=True,
+                    config=self.build_agent_config(),
                 )
-                loop.agentic_loop(prompt, browser)
+                turn_count = loop.agentic_loop(prompt, browser, max_turns)
 
                 # pull out whatever this worker found
                 findings = browser.research_findings or {}
@@ -372,9 +376,11 @@ DONE WHEN:
                 worker_result["gaps"] = findings.get("gaps", [])
                 worker_result["summary"] = findings.get("summary", "")
                 worker_result["confidence"] = findings.get("confidence", "low")
-                worker_result["turns_used"] = loop.turn_count
+                worker_result["turns_used"] = turn_count
 
-                print(f"[Worker {worker_id}] Done — got {len(worker_result['data_points'])} data points")
+                print(
+                    f"[Worker {worker_id}] Done — got {len(worker_result['data_points'])} data points"
+                )
         except Exception as e:
             # if one worker dies the others should keep going
             print(f"[Worker {worker_id}] Crashed: {e}")
@@ -412,30 +418,38 @@ SUB-QUERY 2: [specific searchable question]
 SUB-QUERY 3: [specific searchable question]"""
 
         try:
-            resp = self.client.models.generate_content(model=PLANNING_MODEL, contents=prompt)
+            resp = self.client.models.generate_content(
+                model=PLANNING_MODEL, contents=prompt
+            )
             text = resp.text
             print(f"\nParallel plan:\n{text}")
-
             # pull the sub-queries out of pro's response
             sub_queries = []
-            for line in text.strip().split("\n"):
-                line = line.strip()
-                if line.upper().startswith("SUB-QUERY") and ":" in line:
-                    q = line.split(":", 1)[1].strip()
-                    if q:
-                        sub_queries.append(q)
-
             # if we couldnt parse anything just run the whole query as one worker
-            if not sub_queries:
+            if not text:
                 sub_queries = [query]
+            else:
+                for line in text.strip().split("\n"):
+                    line = line.strip()
+                    if line.upper().startswith("SUB-QUERY") and ":" in line:
+                        q = line.split(":", 1)[1].strip()
+                        if q:
+                            sub_queries.append(q)
+
             return sub_queries[:num_workers]
+
 
         except Exception as e:
             print(f"Parallel planning failed ({e}), just running as one query")
             return [query]
 
-    def run_parallel(self, query: str, num_workers: int = 3,
-                     turns_per_worker: int = 12, headless: bool = False) -> dict:
+    def run_parallel(
+        self,
+        query: str,
+        num_workers: int = 3,
+        turns_per_worker: int = 12,
+        headless: bool = False,
+    ) -> dict:
         """
         the parallel version — multiple browsers at once.
         3 workers x 12 turns each = 36 total actions happening simultaneously.
@@ -512,8 +526,12 @@ SUB-QUERY 3: [specific searchable question]"""
             "mode": "parallel",
             "sub_queries": sub_queries,
             "worker_results": [
-                {"sub_query": wr["sub_query"], "data_points": len(wr["data_points"]),
-                 "sources": len(wr["sources"]), "confidence": wr["confidence"]}
+                {
+                    "sub_query": wr["sub_query"],
+                    "data_points": len(wr["data_points"]),
+                    "sources": len(wr["sources"]),
+                    "confidence": wr["confidence"],
+                }
                 for wr in sorted(results_list, key=lambda x: x["worker_id"])
             ],
             "findings": {
@@ -558,8 +576,13 @@ SUB-QUERY 3: [specific searchable question]"""
 
     def _save(self, result):
         """dump the result dict to a json file in the outputs folder."""
-        safe = "".join(c if c.isalnum() or c == " " else "_" for c in result["query"][:40])
-        fp = OUTPUT_DIR / f"research_{safe.strip().replace(' ','_')}_{datetime.now():%Y%m%d_%H%M%S}.json"
+        safe = "".join(
+            c if c.isalnum() or c == " " else "_" for c in result["query"][:40]
+        )
+        fp = (
+            OUTPUT_DIR
+            / f"research_{safe.strip().replace(' ','_')}_{datetime.now():%Y%m%d_%H%M%S}.json"
+        )
         fp.write_text(json.dumps(result, indent=2, ensure_ascii=False))
         print(f"\nSaved: {fp}")
 
@@ -574,7 +597,9 @@ SUB-QUERY 3: [specific searchable question]"""
         if f["data_points"]:
             print(f"\nData ({len(f['data_points'])}):")
             for dp in f["data_points"]:
-                print(f"  {dp.get('fact','?')}: {dp.get('value','?')} {dp.get('unit','')}")
+                print(
+                    f"  {dp.get('fact','?')}: {dp.get('value','?')} {dp.get('unit','')}"
+                )
                 print(f"    from: {dp.get('source','?')}")
         if f["sources"]:
             print(f"\nSites visited ({len(f['sources'])}):")
@@ -585,7 +610,7 @@ SUB-QUERY 3: [specific searchable question]"""
             for g in f["gaps"]:
                 print(f"  - {g}")
         # parallel mode uses 'total_turns', single mode uses 'turns_used'
-        turns = m.get('turns_used', m.get('total_turns', 0))
+        turns = m.get("turns_used", m.get("total_turns", 0))
         print(f"\n{turns} turns, {m['elapsed_seconds']}s")
         print(f"{'='*60}\n")
 
@@ -594,7 +619,7 @@ SUB-QUERY 3: [specific searchable question]"""
     # every research, but you can also call it separately on old results.
     # uses fpdf2 — installs itself if you dont have it.
 
-    def generate_pdf(self, result: dict = None, filepath: str = None) -> Path:
+    def generate_pdf(self, result: Optional[dict] = None, filepath: Optional[str] = None) -> Optional[Path]:
         """
         make a nice looking pdf report from the research results.
         if you dont pass a result dict it'll use the most recent json file.
@@ -605,16 +630,19 @@ SUB-QUERY 3: [specific searchable question]"""
         except ImportError:
             print("you dont have fpdf2, installing it now...")
             import subprocess
+
             subprocess.check_call(["pip", "install", "fpdf2", "--quiet"])
             from fpdf import FPDF
 
         # no result passed in? grab the latest json from the outputs folder
         if result is None:
-            jsons = sorted(OUTPUT_DIR.glob("research_*.json"), key=lambda p: p.stat().st_mtime)
+            jsons = sorted(
+                OUTPUT_DIR.glob("research_*.json"), key=lambda p: p.stat().st_mtime
+            )
             if not jsons:
                 print("no research results found — run a research first")
-                return None
             result = json.loads(jsons[-1].read_text())
+            return None
 
         f = result["findings"]
         m = result["metadata"]
@@ -630,7 +658,13 @@ SUB-QUERY 3: [specific searchable question]"""
         pdf.cell(0, 14, "Research Report", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 11)
         pdf.set_text_color(100, 100, 100)
-        pdf.cell(0, 7, f"Generated {datetime.now():%d %B %Y at %H:%M}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(
+            0,
+            7,
+            f"Generated {datetime.now():%d %B %Y at %H:%M}",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
         pdf.cell(0, 7, "Emmanuel Omego - Research Agent", new_x="LMARGIN", new_y="NEXT")
 
         # blue line under the title
@@ -681,7 +715,9 @@ SUB-QUERY 3: [specific searchable question]"""
             pdf.cell(65, 8, "Fact", border=1, fill=True)
             pdf.cell(40, 8, "Value", border=1, fill=True)
             pdf.cell(20, 8, "Unit", border=1, fill=True)
-            pdf.cell(65, 8, "Source", border=1, fill=True, new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(
+                65, 8, "Source", border=1, fill=True, new_x="LMARGIN", new_y="NEXT"
+            )
 
             # data rows — alternating light blue / white for readability
             pdf.set_font("Helvetica", "", 9)
@@ -699,7 +735,9 @@ SUB-QUERY 3: [specific searchable question]"""
                 pdf.cell(65, 7, fact, border=1, fill=stripe)
                 pdf.cell(40, 7, val, border=1, fill=stripe)
                 pdf.cell(20, 7, unit, border=1, fill=stripe)
-                pdf.cell(65, 7, src, border=1, fill=stripe, new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(
+                    65, 7, src, border=1, fill=stripe, new_x="LMARGIN", new_y="NEXT"
+                )
             pdf.ln(6)
 
         # --- list of URLs we actually visited ---
@@ -735,18 +773,64 @@ SUB-QUERY 3: [specific searchable question]"""
         pdf.set_text_color(130, 130, 130)
         mode = result.get("mode", "single")
         if mode == "parallel":
-            w = m.get('num_workers', '?')
-            t = m.get('total_turns', '?')
-            pdf.cell(0, 5, f"Parallel: {w} workers, {t} turns, {m['elapsed_seconds']}s", new_x="LMARGIN", new_y="NEXT")
+            w = m.get("num_workers", "?")
+            t = m.get("total_turns", "?")
+            pdf.cell(
+                0,
+                5,
+                f"Parallel: {w} workers, {t} turns, {m['elapsed_seconds']}s",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
         else:
-            pdf.cell(0, 5, f"Single: {m.get('turns_used','?')} turns, {m['elapsed_seconds']}s", new_x="LMARGIN", new_y="NEXT")
-        pdf.cell(0, 5, f"Models: {m.get('planning_model','')} + {m.get('browser_model','')}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(
+                0,
+                5,
+                f"Single: {m.get('turns_used','?')} turns, {m['elapsed_seconds']}s",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+        pdf.cell(
+            0,
+            5,
+            f"Models: {m.get('planning_model','')} + {m.get('browser_model','')}",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
 
         # --- save the pdf ---
-        if filepath is None:
+        # 1. Normalize the input: whether 'filepath' is a string or None, we make it a Path object
+        output_path = Path(filepath) if filepath else None
+
+        if output_path is None:
+            # Sanitize the query for the filename
             safe = "".join(c if c.isalnum() or c == " " else "_" for c in query[:40])
-            filepath = OUTPUT_DIR / f"report_{safe.strip().replace(' ','_')}_{datetime.now():%Y%m%d_%H%M%S}.pdf"
-        filepath = Path(filepath)
-        pdf.output(str(filepath))
-        print(f"\nPDF report saved: {filepath}")
-        return filepath
+            filename = f"report_{safe.strip().replace(' ', '_')}_{datetime.now():%Y%m%d_%H%M%S}.pdf"
+            
+            # Ensure OUTPUT_DIR is a Path so the / operator works correctly
+            output_path = Path(OUTPUT_DIR) / filename
+
+        # 2. Defensive check: Create the folder if it doesn't exist (prevents FileNotFoundError)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 3. CRITICAL: fpdf usually requires a string, not a Path object
+        pdf.output(str(output_path))
+
+        print(f"\nPDF report saved: {output_path}")
+
+        # 4. Return as a string if your calling function expects a string
+        return output_path
+    def build_agent_config(self) -> dict[str, Any]:
+        cu_tool = types.Tool(
+            computer_use=types.ComputerUse(
+                environment=types.Environment.ENVIRONMENT_BROWSER
+            )
+        )
+        # Build filtered tool declarations — only shortcuts the CAD agent needs.
+        # Reduces per-turn overhead from ~10,000 chars to ~2,400 chars.
+        declarations = get_custom_declarations()
+        declarations.append(TASK_COMPLETE_DECLARATION)
+
+        tools = [cu_tool, types.Tool(function_declarations=declarations)]
+        config = {"system_instruction": RESEARCH_PROMPT, "tools": tools}
+        return config

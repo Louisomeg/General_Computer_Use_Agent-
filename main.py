@@ -6,6 +6,7 @@ Usage:
     python main.py "Create a 30mm cube"     # direct CAD task
     python main.py "Research M6 bolt specs" # direct research task
 """
+
 import sys
 
 from google import genai
@@ -34,7 +35,12 @@ def main():
                 break
             if not request or request.lower() in ("quit", "exit", "q"):
                 break
-            planner.run(request)
+            try:
+                planner.run(request)
+            except Exception as e:
+                print(e)
+                break
+        client.close()
 
 
 if __name__ == "__main__":

@@ -150,6 +150,50 @@ def get_custom_declarations(
             },
         ),
         types.FunctionDeclaration(
+            name="report_findings",
+            description=(
+                "Call this when you have completed your research and want to "
+                "submit your findings. Include all data points with sources."
+            ),
+            parameters_json_schema={
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "Summary paragraph of all findings",
+                    },
+                    "data_points": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "fact": {"type": "string"},
+                                "value": {"type": "string"},
+                                "unit": {"type": "string"},
+                                "source": {"type": "string"},
+                            },
+                        },
+                        "description": "Array of {fact, value, unit, source}",
+                    },
+                    "sources": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "All URLs visited during research",
+                    },
+                    "confidence": {
+                        "type": "string",
+                        "description": "high, medium, or low",
+                    },
+                    "gaps": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Things you could NOT find or verify",
+                    },
+                },
+                "required": ["summary", "data_points", "sources", "confidence"],
+            },
+        ),
+        types.FunctionDeclaration(
             name="open_freecad",
             description=(
                 "Open freecad in particular. Use this function to open freecad. It takes zero parameters"

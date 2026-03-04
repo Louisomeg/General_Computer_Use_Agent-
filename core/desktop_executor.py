@@ -1,8 +1,10 @@
 import subprocess
 import time
+from typing import Optional
 
 from core import freecad_functions
 from core.executor import Executor
+from core.screenshot import capture_desktop_screenshot
 from core.settings import (ACTION_DELAY, CLICK_DELAY, SCREEN_HEIGHT,
                            SCREEN_WIDTH, TYPING_DELAY)
 
@@ -27,7 +29,9 @@ class DesktopExecutor(Executor):
         The closest available VM resolution is 1280x800 (same 16:10 aspect).
     """
 
-    def __init__(self, screen_width: int = None, screen_height: int = None):
+    def __init__(
+        self, screen_width: Optional[int] = None, screen_height: Optional[int] = None
+    ):
         self.screen_width = screen_width or SCREEN_WIDTH
         self.screen_height = screen_height or SCREEN_HEIGHT
 
@@ -44,6 +48,9 @@ class DesktopExecutor(Executor):
         screen_y = int(y / 1000 * self.screen_height)
         print(f"     Coords: normalized({x}, {y}) -> screen({screen_x}, {screen_y})")
         return screen_x, screen_y
+
+    def screenshot(self) -> bytes:
+        return capture_desktop_screenshot()
 
     def execute(self, function_calls) -> list:
         """Execute a list of function calls from a Gemini response.

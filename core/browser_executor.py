@@ -10,12 +10,13 @@ plugs straight into the agentic loop without changing anything.
 
 - emmanuel
 """
-import time
+
 import sys
+import time
 from typing import Optional
 
-from playwright.sync_api import sync_playwright, Page, Browser, BrowserContext
 import playwright.sync_api
+from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 
 from core.executor import Executor
 
@@ -37,8 +38,13 @@ class BrowserExecutor(Executor):
             loop.agentic_loop("find M6 bolt specs", browser)
     """
 
-    def __init__(self, screen_width=BROWSER_SCREEN_WIDTH, screen_height=BROWSER_SCREEN_HEIGHT,
-                 initial_url="https://www.google.com", headless=False):
+    def __init__(
+        self,
+        screen_width=BROWSER_SCREEN_WIDTH,
+        screen_height=BROWSER_SCREEN_HEIGHT,
+        initial_url="https://www.google.com",
+        headless=False,
+    ):
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.initial_url = initial_url
@@ -52,8 +58,11 @@ class BrowserExecutor(Executor):
     # ─── open and close the browser ──────────────────────────────────
 
     def __enter__(self):
-        print("[BrowserExecutor] Starting Playwright ({0}x{1})...".format(
-            self.screen_width, self.screen_height))
+        print(
+            "[BrowserExecutor] Starting Playwright ({0}x{1})...".format(
+                self.screen_width, self.screen_height
+            )
+        )
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(
             args=["--disable-extensions", "--disable-dev-shm-usage"],
@@ -135,7 +144,7 @@ class BrowserExecutor(Executor):
 
     # ─── screenshot (the loop calls this every turn) ─────────────────
 
-    def take_screenshot(self) -> bytes:
+    def screenshot(self) -> bytes:
         """grab a png of whats on screen. the loop sends this to gemini."""
         self._page.wait_for_load_state()
         time.sleep(LOAD_WAIT)
@@ -209,10 +218,14 @@ class BrowserExecutor(Executor):
         mag = self.dy(mag) if d in ("up", "down") else self.dx(mag)
         self._page.mouse.move(x, y)
         ddx, ddy = 0, 0
-        if d == "up": ddy = -mag
-        elif d == "down": ddy = mag
-        elif d == "left": ddx = -mag
-        elif d == "right": ddx = mag
+        if d == "up":
+            ddy = -mag
+        elif d == "down":
+            ddy = mag
+        elif d == "left":
+            ddx = -mag
+        elif d == "right":
+            ddx = mag
         self._page.mouse.wheel(ddx, ddy)
         self._page.wait_for_load_state()
         return self._ok()
@@ -247,9 +260,15 @@ class BrowserExecutor(Executor):
     def _key_combination(self, a):
         # gemini sends stuff like "control+a" and playwright wants "Control+a"
         KEYMAP = {
-            "control": "Control", "alt": "Alt", "shift": "Shift",
-            "command": "Meta", "enter": "Enter", "escape": "Escape",
-            "backspace": "Backspace", "tab": "Tab", "space": "Space",
+            "control": "Control",
+            "alt": "Alt",
+            "shift": "Shift",
+            "command": "Meta",
+            "enter": "Enter",
+            "escape": "Escape",
+            "backspace": "Backspace",
+            "tab": "Tab",
+            "space": "Space",
             "delete": "Delete",
         }
         keys = [KEYMAP.get(k.lower(), k) for k in a["keys"].split("+")]

@@ -12,6 +12,8 @@
 #   task = Task(description="Create an M10x30 hex bolt", params={...})
 #   result = agent.execute(task)
 
+from typing import Any
+
 from google.genai import Client, types
 
 from agents.registry import register
@@ -30,22 +32,42 @@ from core.settings import SYSTEM_INSTRUCTION
 # ---------------------------------------------------------------------------
 
 CAD_UBUNTU_SHORTCUTS = {
-    "minimize_window", "close_window", "maximize_window",
-    "snap_window_left", "snap_window_right",
+    "minimize_window",
+    "close_window",
+    "maximize_window",
+    "snap_window_left",
+    "snap_window_right",
     "switch_window_forward",
-    "copy", "paste", "cut", "select_all", "undo", "redo",
-    "save", "save_as",
+    "copy",
+    "paste",
+    "cut",
+    "select_all",
+    "undo",
+    "redo",
+    "save",
+    "save_as",
     "open_terminal",
 }
 
 CAD_FREECAD_SHORTCUTS = {
     # File / Edit — standard Ctrl+key combos, always work regardless of focus
-    "file_new", "file_save", "file_save_as", "file_export",
-    "edit_undo", "edit_redo", "cancel_operation", "toggle_visibility",
+    "file_new",
+    "file_save",
+    "file_save_as",
+    "file_export",
+    "edit_undo",
+    "edit_redo",
+    "cancel_operation",
+    "toggle_visibility",
     # View — simple single-key presses, useful after exiting sketcher
-    "view_isometric", "view_front", "view_top", "view_right",
-    "view_fit_all", "view_fit_selection",
-    "view_orthographic", "view_perspective",
+    "view_isometric",
+    "view_front",
+    "view_top",
+    "view_right",
+    "view_fit_all",
+    "view_fit_selection",
+    "view_orthographic",
+    "view_perspective",
     # --------------------------------------------------------------------------
     # ALL sketcher geometry and constraint shortcuts have been REMOVED.
     # The model uses the Sketch menu instead — menus are visible, verifiable,
@@ -207,21 +229,23 @@ class CADAgent:
         self.client = client
         self.executor = executor
 
+        config = self.build_agent_config()
+        self.loop = AgenticLoop(client, config=config)
+        self.state = None  # active ProcedureState, if running a skill
+
+    def build_agent_config(self) -> dict[str, Any]:
+        cu_tool = types.Tool(computer_use=types.ComputerUse())
         # Build filtered tool declarations — only shortcuts the CAD agent needs.
         # Reduces per-turn overhead from ~10,000 chars to ~2,400 chars.
-        cad_declarations = get_custom_declarations(
+        declarations = get_custom_declarations(
             ubuntu_filter=CAD_UBUNTU_SHORTCUTS,
             freecad_filter=CAD_FREECAD_SHORTCUTS,
         )
+        declarations.append(TASK_COMPLETE_DECLARATION)
 
-        self.loop = AgenticLoop(
-            client,
-            system_instruction=CAD_SYSTEM_INSTRUCTION,   # base + CAD addendum
-            max_turns=25,
-            extra_declarations=[TASK_COMPLETE_DECLARATION],
-            custom_declarations=cad_declarations,
-        )
-        self.state = None  # active ProcedureState, if running a skill
+        tools = [cu_tool, types.Tool(function_declarations=declarations)]
+        config = {"system_instruction": CAD_SYSTEM_INSTRUCTION, "tools": tools}
+        return config
 
     @property
     def card(self) -> dict:
@@ -273,10 +297,15 @@ class CADAgent:
         description_lower = task.description.lower()
         for skill_name in list_skills():
             # Match underscored name and spaced name (bicycle_stem / bicycle stem)
-            if skill_name in description_lower or skill_name.replace("_", " ") in description_lower:
+            if (
+                skill_name in description_lower
+                or skill_name.replace("_", " ") in description_lower
+            ):
                 skill = load_skill(skill_name)
                 if skill:
-                    print(f"[CAD Agent] Found skill via description match: {skill_name}")
+                    print(
+                        f"[CAD Agent] Found skill via description match: {skill_name}"
+                    )
                     return skill
 
         return None
@@ -311,7 +340,9 @@ class CADAgent:
         tasks that don't match a specific skill by name.
         """
         prompt = self._build_prompt(task)
-        print(f"[CAD Agent] No exact skill match, running freeform design with tutorial reference")
+        print(
+            f"[CAD Agent] No exact skill match, running freeform design with tutorial reference"
+        )
         self.loop.agentic_loop(prompt, self.executor)
 
     # ------------------------------------------------------------------
@@ -361,7 +392,9 @@ class CADAgent:
         if all_trouble:
             parts.append("### Common Problems")
             for item in all_trouble:
-                parts.append(f"- {item.get('problem', '')} → {item.get('solution', '')}")
+                parts.append(
+                    f"- {item.get('problem', '')} → {item.get('solution', '')}"
+                )
             parts.append("")
 
         reference = "\n".join(parts)
@@ -403,98 +436,88 @@ class CADAgent:
             "## Execution Plan\n"
             "Follow these steps IN ORDER. After each step, study the screenshot to confirm it worked.\n"
             "If a step fails, read the PREREQUISITE CHECK before retrying.\n\n"
-
-            "1. Minimize the terminal: system_shortcut(\"minimize_window\")\n\n"
-
+            '1. Minimize the terminal: system_shortcut("minimize_window")\n\n'
             "2. Check if FreeCAD is open.\n"
             "   If YES: click on its window in the taskbar to bring it to focus.\n"
             "     IMPORTANT: If FreeCAD already has a document open with existing work\n"
             "     (you see shapes in the viewport or items in the model tree besides\n"
             "     the default empty state), create a NEW document first:\n"
-            "     freecad_shortcut(\"file_new\") (Ctrl+N). This gives you a clean start.\n"
+            '     freecad_shortcut("file_new") (Ctrl+N). This gives you a clean start.\n'
             "     Do NOT try to modify or interact with existing geometry.\n"
             "   If NO: use open_freecad(), then wait_5_seconds.\n"
             "   If NO: use open_application, then wait_5_seconds.\n\n"
-
             "3. Check if the Part Design workbench is active.\n"
             "   PREREQUISITE CHECK: Look at the menu bar at the very top of the window.\n"
-            "   Do you see \"Part Design\" as one of the menu items (between other menus)?\n"
+            '   Do you see "Part Design" as one of the menu items (between other menus)?\n'
             "   - If YES: the workbench is active, proceed to step 4.\n"
             "   - If NO: you need to switch the workbench. Look for a DROPDOWN widget in\n"
             "     the toolbar area (below the menu bar) that shows the current workbench name\n"
-            "     (it might say \"Start\" or something else). Click on that dropdown and select\n"
-            "     \"Part Design\" from the list. Then verify the menu bar now shows \"Part Design\".\n\n"
-
+            '     (it might say "Start" or something else). Click on that dropdown and select\n'
+            '     "Part Design" from the list. Then verify the menu bar now shows "Part Design".\n\n'
             "4. Check if a Body already exists in the model tree (left panel).\n"
-            "   - If the model tree already shows \"Body\" and \"Origin\": skip to step 5.\n"
-            "   - If NOT: click the \"Part Design\" text in the MENU BAR (top of window),\n"
-            "     then click \"Create body\" in the dropdown menu.\n"
-            "     Verify: \"Body\" and \"Origin\" appear in the model tree.\n\n"
-
+            '   - If the model tree already shows "Body" and "Origin": skip to step 5.\n'
+            '   - If NOT: click the "Part Design" text in the MENU BAR (top of window),\n'
+            '     then click "Create body" in the dropdown menu.\n'
+            '     Verify: "Body" and "Origin" appear in the model tree.\n\n'
             "5. Create a new sketch on the XY plane:\n"
-            "   PREREQUISITE CHECK: Is \"Body\" selected/highlighted in the model tree?\n"
-            "   If not, click on \"Body\" in the model tree first.\n"
-            "   Then: click the \"Part Design\" text in the MENU BAR at the top of the window.\n"
-            "   In the dropdown, look for \"Create sketch\" (NOT \"New Sketch\" — FreeCAD 1.0\n"
-            "   uses the name \"Create sketch\"). Click it.\n"
+            '   PREREQUISITE CHECK: Is "Body" selected/highlighted in the model tree?\n'
+            '   If not, click on "Body" in the model tree first.\n'
+            '   Then: click the "Part Design" text in the MENU BAR at the top of the window.\n'
+            '   In the dropdown, look for "Create sketch" (NOT "New Sketch" — FreeCAD 1.0\n'
+            '   uses the name "Create sketch"). Click it.\n'
             "   ALTERNATIVE: If you cannot find it in the Part Design menu, look in the\n"
-            "   Tasks panel (left side) under \"Helper tools\" for \"Create sketch\".\n"
-            "   When the plane selector dialog appears, click \"XY_Plane\" then click OK.\n"
+            '   Tasks panel (left side) under "Helper tools" for "Create sketch".\n'
+            '   When the plane selector dialog appears, click "XY_Plane" then click OK.\n'
             "   Verify: you should see the sketcher grid with red/green axis lines.\n"
-            "   NOTE: While inside the sketcher, the menu bar will show a \"Sketch\" menu.\n"
+            '   NOTE: While inside the sketcher, the menu bar will show a "Sketch" menu.\n'
             "   Use this menu for ALL sketcher operations (geometry, constraints, close).\n\n"
-
             "6. Draw the rectangle (TWO clicks, then add constraints):\n"
             "   a. Activate the rectangle tool via the MENU:\n"
-            "      Click the \"Sketch\" text in the MENU BAR at the top of the window.\n"
-            "      In the dropdown, hover over \"Sketcher geometries\" (a submenu arrow appears).\n"
-            "      In the submenu that opens to the right, click \"Rectangle\".\n"
-            "      If the submenu does not appear, try clicking \"Sketcher geometries\" instead.\n"
+            '      Click the "Sketch" text in the MENU BAR at the top of the window.\n'
+            '      In the dropdown, hover over "Sketcher geometries" (a submenu arrow appears).\n'
+            '      In the submenu that opens to the right, click "Rectangle".\n'
+            '      If the submenu does not appear, try clicking "Sketcher geometries" instead.\n'
             "   b. Click the FIRST corner in the upper-left area of the viewport.\n"
             "      Look at the screenshot — place the click ABOVE and LEFT of the center\n"
             "      origin where the red and green axis lines cross. Stay away from those lines.\n"
             "   c. Click the SECOND corner, offset down-right from the first click.\n"
             "      This creates an approximate rectangle. Exact size does not matter yet.\n"
-            "   d. Press key_combination(\"escape\") to exit the rectangle tool.\n"
+            '   d. Press key_combination("escape") to exit the rectangle tool.\n'
             "   e. Now add a WIDTH constraint:\n"
             "      Click on one HORIZONTAL edge of the rectangle (click at the midpoint\n"
             "      of the line, not near a corner).\n"
             "      Then activate the distance constraint via the MENU:\n"
-            "      Click \"Sketch\" in the MENU BAR → hover over \"Sketcher constraints\" →\n"
-            "      click \"Constrain distance\" in the submenu.\n"
+            '      Click "Sketch" in the MENU BAR → hover over "Sketcher constraints" →\n'
+            '      click "Constrain distance" in the submenu.\n'
             "      A dimension dialog appears with a number input field.\n"
             "      IMPORTANT — UNIT HANDLING: Always type the number WITH the unit, e.g.\n"
-            "      type \"30 mm\" (with the space before mm), NOT just \"30\".\n"
+            '      type "30 mm" (with the space before mm), NOT just "30".\n'
             "      FreeCAD may display a different default unit (like µm), so always\n"
-            "      include \" mm\" after the number to ensure millimeters.\n"
-            "      After typing, click the \"OK\" button in the dialog (do NOT press Enter).\n"
+            '      include " mm" after the number to ensure millimeters.\n'
+            '      After typing, click the "OK" button in the dialog (do NOT press Enter).\n'
             "   f. Add a HEIGHT constraint:\n"
             "      Click on one VERTICAL edge of the rectangle.\n"
             "      Then activate the distance constraint via the MENU again:\n"
-            "      Click \"Sketch\" → hover \"Sketcher constraints\" → click \"Constrain distance\".\n"
-            "      Type the height value with unit (e.g. \"30 mm\"), then click OK.\n"
+            '      Click "Sketch" → hover "Sketcher constraints" → click "Constrain distance".\n'
+            '      Type the height value with unit (e.g. "30 mm"), then click OK.\n'
             "   Verify: the rectangle should resize to the exact dimensions.\n\n"
-
             "7. Close the sketch:\n"
             "   Do NOT press Escape to close the sketch — Escape only cancels the active tool.\n"
-            "   Instead: click the \"Sketch\" text in the MENU BAR, then click \"Close sketch\".\n"
-            "   ALTERNATIVE: click the \"Close\" button in the Tasks panel (left side).\n"
-            "   Verify: the menu bar should now show \"Part Design\" menus (not \"Sketch\" menus).\n"
+            '   Instead: click the "Sketch" text in the MENU BAR, then click "Close sketch".\n'
+            '   ALTERNATIVE: click the "Close" button in the Tasks panel (left side).\n'
+            '   Verify: the menu bar should now show "Part Design" menus (not "Sketch" menus).\n'
             "   You should see the rectangle outline in the 3D viewport.\n\n"
-
             "8. Pad (extrude) the sketch:\n"
-            "   Click \"Part Design\" in the MENU BAR at the top, then click \"Pad\" in the dropdown.\n"
+            '   Click "Part Design" in the MENU BAR at the top, then click "Pad" in the dropdown.\n'
             "   A dialog will appear in the Tasks panel (left side) with a Length input field.\n"
-            "   Click the Length field, clear it, type the depth value WITH unit (e.g. \"30 mm\").\n"
+            '   Click the Length field, clear it, type the depth value WITH unit (e.g. "30 mm").\n'
             "   Click OK to apply the pad.\n"
-            "   Then zoom to fit: click \"View\" in the MENU BAR → click \"Standard views\" →\n"
-            "   click \"Fit All\" to see the full 3D solid.\n"
+            '   Then zoom to fit: click "View" in the MENU BAR → click "Standard views" →\n'
+            '   click "Fit All" to see the full 3D solid.\n'
             "   Verify: you should see a 3D solid in the viewport.\n\n"
-
             "9. Call task_complete() with a summary of what was built.\n\n"
-
             "CRITICAL RULES:\n"
-            "- NEVER use the Delete key. Use freecad_shortcut(\"edit_undo\") to fix mistakes.\n"
+            '- NEVER use the Delete key. Use freecad_shortcut("edit_undo") to fix mistakes.\n'
             "- Use the MENU BAR for ALL FreeCAD operations:\n"
             "  * Sketch menu → Sketcher geometries (for Rectangle, Line, Circle, etc.)\n"
             "  * Sketch menu → Sketcher constraints (for Constrain distance, etc.)\n"
@@ -510,8 +533,9 @@ class CADAgent:
         )
         return "\n".join(parts)
 
-    def _build_step_prompt(self, step: dict, params: dict,
-                           step_idx: int, total_steps: int) -> str:
+    def _build_step_prompt(
+        self, step: dict, params: dict, step_idx: int, total_steps: int
+    ) -> str:
         """Build a prompt for a single skill step.
 
         Handles three formats:
@@ -560,7 +584,9 @@ class CADAgent:
             # Resolve any {{param}} templates in the description
             resolved_text = "\n".join(parts)
             for param_name, param_value in params.items():
-                resolved_text = resolved_text.replace(f"{{{{{param_name}}}}}", str(param_value))
+                resolved_text = resolved_text.replace(
+                    f"{{{{{param_name}}}}}", str(param_value)
+                )
             return resolved_text
 
         elif "skill" in step:
@@ -577,7 +603,9 @@ class CADAgent:
             # Simple direct action
             for action_type in ("shortcut", "type", "key", "click", "wait"):
                 if action_type in step:
-                    parts.append(f"\n## Current Step\nAction: {action_type} -> {step[action_type]}")
+                    parts.append(
+                        f"\n## Current Step\nAction: {action_type} -> {step[action_type]}"
+                    )
                     break
 
         return "\n".join(parts)
