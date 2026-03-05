@@ -5,16 +5,7 @@ from core.desktop_executor import DesktopExecutor
 
 test_client = Client()
 de_exec = DesktopExecutor()
-excluded_functions = [
-    "click_at",
-    "hover_at",
-    "type_text_at",
-    "scroll_document",
-    "scroll_at",
-    "wait_5_seconds",
-    "key_combination",
-    "drag_and_drop",
-]
+excluded_functions = ["open_web_browser", "go_back", "go_forward", "search", "navigate"]
 config = {
     "tools": [
         types.Tool(
@@ -23,9 +14,11 @@ config = {
                 excluded_predefined_functions=excluded_functions,
             )
         )
-    ]
+    ],
+    "system_instructions": "just be you",
 }
 test_loop = AgenticLoop(test_client, config=config)
 test_loop.agentic_loop(
-    "print all the functions you have. then open freecad with these functions", de_exec
+    "open freecad with the functions you have. print the functions you know before.",
+    de_exec,
 )
