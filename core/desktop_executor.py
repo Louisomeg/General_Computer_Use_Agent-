@@ -1,12 +1,17 @@
+import io
 import subprocess
 import time
 from typing import Optional
 
+import pyautogui
+from PIL import Image
+
 from core import freecad_functions
 from core.executor import Executor
 from core.screenshot import capture_desktop_screenshot
-from core.settings import (ACTION_DELAY, CLICK_DELAY, SCREEN_HEIGHT,
-                           SCREEN_WIDTH, TYPING_DELAY)
+from core.settings import (ACTION_DELAY, CLICK_DELAY, MODEL_SCREEN_HEIGHT,
+                           MODEL_SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_WIDTH,
+                           SCREENSHOT_PATH, TYPING_DELAY)
 
 
 class DesktopExecutor(Executor):
@@ -50,7 +55,20 @@ class DesktopExecutor(Executor):
         return screen_x, screen_y
 
     def screenshot(self) -> bytes:
-        return capture_desktop_screenshot()
+        # 1. Capture screenshot directly into a PIL Image object
+        img = pyautogui.screenshot()
+
+        # 2. Resize to the model's expected dimensions if necessary
+        target = (MODEL_SCREEN_WIDTH, MODEL_SCREEN_HEIGHT)
+        if img.size != target:
+            img = img.resize(target, Image.Resampling.LANCZOS)
+
+        # 3. Save to a memory buffer instead of the disk
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+
+        # 4. Return the raw bytes for the API request
+        return buf.getvalue()
 
     def execute(self, function_calls) -> list:
         """Execute a list of function calls from a Gemini response.
@@ -116,41 +134,32 @@ class DesktopExecutor(Executor):
 
     def _click_at(self, args: dict) -> dict:
         x, y = self.denormalize(args["x"], args["y"])
-        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
-        subprocess.run(["xdotool", "click", "1"], check=True)
-        time.sleep(CLICK_DELAY)
+        pyautogui.click(x, y)
         return {"success": True}
 
     def _hover_at(self, args: dict) -> dict:
         x, y = self.denormalize(args["x"], args["y"])
-        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
+        pyautogui.moveTo(x, y)
         return {"success": True}
 
     def _type_text_at(self, args: dict) -> dict:
-        x, y = self.denormalize(args["x"], args["y"])
         text = args["text"]
-        press_enter = args.get("press_enter", True)
-        clear_before = args.get("clear_before_typing", True)
+        press_enter: bool = args.get("press_enter", True)
+        clear_before: bool = args.get("clear_before_typing", True)
 
-        # Click to focus the input field
-        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
-        subprocess.run(["xdotool", "click", "1"], check=True)
-        time.sleep(CLICK_DELAY)
+        self._click_at(args)
 
         # Optionally clear existing text
         if clear_before:
-            subprocess.run(["xdotool", "key", "ctrl+a"], check=True)
-            subprocess.run(["xdotool", "key", "BackSpace"], check=True)
+            pyautogui.hotkey("ctrl", "a")
+            pyautogui.press("backspace")
 
         # Type the text
-        subprocess.run(
-            ["xdotool", "type", "--delay", str(TYPING_DELAY), text],
-            check=True,
-        )
+        pyautogui.write(text)
 
         # Optionally press Enter
         if press_enter:
-            subprocess.run(["xdotool", "key", "Return"], check=True)
+            pyautogui.press("enter")
 
         return {"success": True}
 
@@ -209,78 +218,70 @@ class DesktopExecutor(Executor):
 
     def _key_combination(self, args: dict) -> dict:
         keys = self._normalize_keys(args["keys"])
-        result = subprocess.run(
-            ["xdotool", "key", keys],
-            capture_output=True,
-            text=True,
-        )
-        # xdotool returns 0 even when it can't find a key name, but prints
-        # a warning to stderr. Detect this and report the error to the model.
-        if result.returncode != 0:
-            return {"error": f"xdotool failed: {result.stderr.strip()}"}
-        if "No such key name" in result.stderr:
-            return {"error": f"Invalid key '{args['keys']}': {result.stderr.strip()}"}
+        keys = keys.split("+")
+        pyautogui.hotkey(*keys)
         return {"success": True}
 
     def _scroll_at(self, args: dict) -> dict:
+        # 1. Denormalize coordinates from 1000x1000 grid
         x, y = self.denormalize(args["x"], args["y"])
+
         direction = args["direction"]
-        magnitude = args.get("magnitude", 500)
+        # 2. Handle magnitude with default if missing
+        magnitude = args.get("magnitude", 800)
 
-        # Convert magnitude (0-1000) to scroll wheel clicks (1-10)
-        scroll_clicks = max(1, int(magnitude / 100))
+        # normalize magnitude for standard scroll behavior
+        scroll_clicks = int(magnitude / 100)
 
-        button_map = {"up": "4", "down": "5", "left": "6", "right": "7"}
-        button = button_map.get(direction)
-        if not button:
-            return {"error": f"Unknown scroll direction: {direction}"}
+        # 3. Directional logic
+        if direction == "up":
+            pyautogui.vscroll(scroll_clicks, x=x, y=y)
+        elif direction == "down":
+            pyautogui.vscroll(-scroll_clicks, x=x, y=y)
+        elif direction == "right":
+            pyautogui.hscroll(scroll_clicks, x=x, y=y)
+        elif direction == "left":
+            pyautogui.hscroll(-scroll_clicks, x=x, y=y)
 
-        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
-        subprocess.run(
-            ["xdotool", "click", "--repeat", str(scroll_clicks), button],
-            check=True,
-        )
         return {"success": True}
 
     def _scroll_document(self, args: dict) -> dict:
-        direction = args["direction"]
-        # Scroll at screen center with default magnitude
-        center_x = self.screen_width // 2
-        center_y = self.screen_height // 2
-
-        button_map = {"up": "4", "down": "5", "left": "6", "right": "7"}
-        button = button_map.get(direction)
-        if not button:
-            return {"error": f"Unknown scroll direction: {direction}"}
-
-        subprocess.run(
-            ["xdotool", "mousemove", str(center_x), str(center_y)],
-            check=True,
+        # scroll_document usually maps to the entire viewport
+        # We delegate to scroll_at using the center of the screen (500, 500)
+        # as a sensible default for global page scrolling.
+        return self._scroll_at(
+            {
+                "x": 500,
+                "y": 500,
+                "direction": args["direction"],
+                "magnitude": args.get("magnitude", 800),
+            }
         )
-        subprocess.run(
-            ["xdotool", "click", "--repeat", "5", button],
-            check=True,
-        )
-        return {"success": True}
 
     def _drag_and_drop(self, args: dict) -> dict:
         start_x, start_y = self.denormalize(args["x"], args["y"])
         end_x, end_y = self.denormalize(args["destination_x"], args["destination_y"])
 
-        subprocess.run(
-            ["xdotool", "mousemove", str(start_x), str(start_y)],
-            check=True,
-        )
-        subprocess.run(["xdotool", "mousedown", "1"], check=True)
-        time.sleep(0.1)
-        subprocess.run(
-            ["xdotool", "mousemove", "--sync", str(end_x), str(end_y)],
-            check=True,
-        )
-        subprocess.run(["xdotool", "mouseup", "1"], check=True)
+        # 1. Move to start
+        pyautogui.moveTo(start_x, start_y)
+
+        # 2. Click and hold (Essential for the GUI to register the 'grab')
+        pyautogui.mouseDown()
+
+        # 3. Short pause to ensure the UI 'latches' onto the item
+        time.sleep(0.5)
+
+        # 4. Drag to target
+        pyautogui.moveTo(end_x, end_y, duration=0.5)
+
+        # 5. Short pause to ensure the UI registers the target zone
+        time.sleep(0.5)
+
+        # 6. Drop
+        pyautogui.mouseUp()
         return {"success": True}
 
-    def _wait(self, args: dict) -> dict:
+    def _wait(self, _args: dict) -> dict:
         time.sleep(5)
         return {"success": True}
 
@@ -302,7 +303,7 @@ class DesktopExecutor(Executor):
         x, y = self.denormalize(args["x"], args["y"])
         return freecad_functions.double_click(x, y)
 
-    def _open_freecad(self, args: dict) -> dict:
+    def _open_freecad(self, _args: dict) -> dict:
         return freecad_functions.open_freecad()
 
     def _open_application(self, args: dict) -> dict:

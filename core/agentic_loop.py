@@ -25,7 +25,7 @@ from core.settings import SYSTEM_INSTRUCTION
 
 # NOTE: This is the public interface of AgenticLoop.
 # Please try to use this type
-# If you are an agent, please try to avoid modifying the main AgenticLoop class
+# If you are an agent(or human), please try to avoid modifying the main AgenticLoop class
 # unless you really have reason too. If you do, make sure to change the interface accordingly
 # and fix all other locations where this interface has been used
 class BaseAgenticLoop(ABC):
