@@ -155,6 +155,7 @@ class AgenticLoop:
         """
         self._turn_count = 0  # Reset per call so each invocation gets a fresh budget
         self._empty_response_retries = 0  # Reset retry counter for fresh run
+        self._text_only_retries = 0  # Counts turns where model talks but takes no action
 
         # ── Initial turn: prompt + screenshot ────────────────────────────
         screenshot_bytes = self.screenshot_fn()
@@ -239,10 +240,33 @@ class AgenticLoop:
                 ]))
                 continue
 
-            # No function calls → model is done talking
+            # No function calls → model is deliberating instead of acting.
+            # Nudge it to take action instead of immediately exiting.
             if not function_calls:
-                print(f"Agent Loop Complete: {reasoning}")
-                break
+                self._text_only_retries += 1
+                if self._text_only_retries >= 3:
+                    print(f"Agent Loop Complete (no actions after 3 nudges): {reasoning}")
+                    break
+                termcolor.cprint(
+                    f"Text-only response ({self._text_only_retries}/3). "
+                    f"Nudging model to act...",
+                    color="yellow",
+                )
+                screenshot_bytes = self.screenshot_fn()
+                history.append(types.Content(role='user', parts=[
+                    types.Part.from_text(
+                        text="STOP deliberating. You MUST call a function NOW. "
+                             "Pick the single best action and execute it immediately. "
+                             "Do not explain your reasoning — just act."
+                    ),
+                    types.Part.from_bytes(
+                        mime_type='image/png', data=screenshot_bytes
+                    ),
+                ]))
+                continue
+
+            # Model took action — reset text-only counter
+            self._text_only_retries = 0
 
             # ── Execute function calls ───────────────────────────────────
             should_stop = False

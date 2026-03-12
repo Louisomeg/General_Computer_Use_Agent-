@@ -103,7 +103,9 @@ moving to the next step. Never skip steps or assume something worked without che
 - Look at the screenshot carefully to estimate where UI elements are located.
 
 ## Action Guidelines
-- ALWAYS study the screenshot before every action. Describe what you see.
+- ACT IMMEDIATELY. Do NOT deliberate between options. Pick the best action and call the
+  function right away. Never output long reasoning without a function call.
+- ALWAYS study the screenshot before every action. Describe what you see BRIEFLY.
 - After opening an application, use wait_5_seconds to let it fully load.
 - Click on menus, buttons, and icons that you can see in the screenshot.
 - If a click doesn't work, look at the screenshot again — you may have
