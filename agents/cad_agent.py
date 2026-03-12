@@ -372,7 +372,8 @@ class CADAgent:
             "     the default empty state), create a NEW document: click \"File\" in the\n"
             "     MENU BAR → click \"New\". This gives you a clean start.\n"
             "     Do NOT try to modify or interact with existing geometry.\n"
-            "   If NO: use open_application(\"FreeCAD\"), then wait_5_seconds.\n\n"
+            "   If NO: open it via the Applications menu → Graphics → FreeCAD.\n"
+            "     Then use wait_5_seconds to let it load.\n\n"
 
             "3. Check if the Part Design workbench is active.\n"
             "   PREREQUISITE CHECK: Look at the menu bar at the very top of the window.\n"
