@@ -54,23 +54,4 @@ def get_custom_declarations() -> list:
                 "required": ["x", "y"],
             },
         ),
-        # Open application via Ubuntu launcher
-        types.FunctionDeclaration(
-            name="open_application",
-            description=(
-                "Launch an application by name using the Ubuntu desktop "
-                "launcher. Presses Super key, types the application name, "
-                "and presses Enter to launch it."
-            ),
-            parameters_json_schema={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Name of the application to launch (e.g. 'FreeCAD', 'Terminal', 'Firefox')",
-                    },
-                },
-                "required": ["name"],
-            },
-        ),
     ]

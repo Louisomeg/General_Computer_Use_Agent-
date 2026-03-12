@@ -57,9 +57,9 @@ def test_logic():
 
         declarations = get_custom_declarations()
         names = [d.name for d in declarations]
-        # After shortcut removal, only GUI-action declarations remain:
-        # right_click_at, double_click_at, open_application
-        expected_names = ["right_click_at", "double_click_at", "open_application"]
+        # After shortcut + open_application removal, only GUI-action declarations remain:
+        # right_click_at, double_click_at
+        expected_names = ["right_click_at", "double_click_at"]
         assert names == expected_names, f"Declaration names mismatch: expected {expected_names}, got {names}"
 
         print(f"  [PASS] custom_tools.py — {len(declarations)} declarations: {names}")
@@ -94,10 +94,10 @@ def test_logic():
         sx, sy = executor2.denormalize(500, 500)
         assert sx == 720 and sy == 450, f"Custom center: got ({sx},{sy})"
 
-        # Handler lookup (12 handlers)
+        # Handler lookup (11 handlers — no open_application)
         for name in ["click_at", "hover_at", "type_text_at", "key_combination",
                       "scroll_at", "scroll_document", "drag_and_drop", "wait_5_seconds",
-                      "right_click_at", "double_click_at", "open_application",
+                      "right_click_at", "double_click_at",
                       "task_complete"]:
             handler = executor._get_handler(name)
             assert handler is not None, f"Missing handler for '{name}'"
@@ -105,7 +105,7 @@ def test_logic():
         # Unknown function returns None
         assert executor._get_handler("nonexistent_function") is None
 
-        print(f"  [PASS] desktop_executor.py — class, denormalize, 12 handlers verified")
+        print(f"  [PASS] desktop_executor.py — class, denormalize, 11 handlers verified")
         passed += 1
     except Exception as e:
         print(f"  [FAIL] desktop_executor.py — {e}")

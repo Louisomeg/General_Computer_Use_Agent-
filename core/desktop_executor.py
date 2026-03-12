@@ -51,7 +51,6 @@ class DesktopExecutor(Executor):
             # Custom functions
             "right_click_at": self._right_click_at,
             "double_click_at": self._double_click_at,
-            "open_application": self._open_application,
             # Completion signal
             "task_complete": self._task_complete,
         }
@@ -254,9 +253,6 @@ class DesktopExecutor(Executor):
     def _double_click_at(self, args: dict) -> dict:
         x, y = self.denormalize(args["x"], args["y"])
         return freecad_functions.double_click(x, y)
-
-    def _open_application(self, args: dict) -> dict:
-        return freecad_functions.open_application(args["name"])
 
     def _task_complete(self, args: dict) -> dict:
         summary = args.get("summary", "Task completed")

@@ -17,11 +17,11 @@ MODEL_SCREEN_WIDTH = 1440
 MODEL_SCREEN_HEIGHT = 900
 
 # Timing constants (seconds unless noted)
-ACTION_DELAY = 1.0              # Pause after each action for UI settling
-TYPING_DELAY = 50               # Milliseconds between keystrokes (xdotool --delay)
-APP_LAUNCH_DELAY = 3.0          # Pause after launching an application
-SEARCH_TYPE_DELAY = 2.0         # Pause after typing in Ubuntu launcher
-CLICK_DELAY = 0.5               # Pause after a mouse click
+ACTION_DELAY = 0.5              # Pause after each action for UI settling
+TYPING_DELAY = 30               # Milliseconds between keystrokes (xdotool --delay)
+CLICK_DELAY = 0.3               # Pause after a mouse click
+APP_LAUNCH_DELAY = 3.0          # Pause after launching an application (used by freecad_functions)
+SEARCH_TYPE_DELAY = 1.0         # Pause after typing in launcher (used by freecad_functions)
 
 # Model configuration
 DEFAULT_MODEL = "gemini-3-flash-preview"
@@ -53,8 +53,7 @@ Your tools are:
 - right_click_at — open context menus
 - double_click_at — open files/folders
 - drag_and_drop — drag elements
-- key_combination — for text editing keys (Escape, Enter, Ctrl+A, Ctrl+Z, etc.)
-- open_application — launch apps by name
+- key_combination — ONLY for text editing keys (Escape, Enter, Ctrl+S, Ctrl+Z, etc.)
 - task_complete — signal you are done
 
 ALWAYS look at the screenshot first, identify what you see, and click on visible
@@ -63,36 +62,26 @@ UI elements to accomplish your goal. This is how a human uses a computer.
 Do NOT use keyboard shortcuts for navigation or application features. Instead,
 click on menus, buttons, and icons that you can see in the screenshot.
 
-## How to Open Applications — Step by Step
-If you need to open an application, follow these steps IN ORDER. Move to the next
-step ONLY if the previous one did not work.
+## How to Open Applications — GUI Only
+To open applications, use the "Applications" menu in the TOP-LEFT corner of the screen.
+This is an XFCE desktop — NOT GNOME. There is no Activities overview or Super key launcher.
 
-Step 1: Use open_application("AppName"), then wait_5_seconds.
-        Look at the screenshot — did a new window appear? If yes, you're done.
+Step 1: Click the "Applications" text in the top-left corner (roughly x=45, y=12).
+        A dropdown menu will appear with categories.
 
-Step 2: Look at the TASKBAR (the bar at the very top of the screen).
-        It shows the names/icons of running applications.
-        If you see the app name there, CLICK on it to bring its window to front.
+Step 2: Hover over the category that contains your app (e.g. "Graphics" for FreeCAD,
+        "Accessories" for text editors, "System" for file manager/terminal,
+        "Web Browser" for browsers). A submenu will appear.
 
-Step 3: Click "Activities" text in the TOP-LEFT corner of the screen (coordinates
-        roughly x=30, y=10). This opens the GNOME Activities overview.
-        - You will see a search bar at the top center and open window thumbnails.
-        - Click the search bar and type the app name using type_text_at.
-        - Wait for search results to appear below.
-        - CLICK on the application icon in the search results (do NOT press Enter).
+Step 3: Click the application name in the submenu.
 
-Step 4: If search shows nothing, look for the "Show Applications" grid icon.
-        It is a grid of dots at the BOTTOM of the left dock/sidebar
-        (approximately x=15, y=980). Click it to open the full application grid.
-        - This shows ALL installed applications as a grid of icons with labels.
-        - Scroll down if needed to find the app.
-        - CLICK on the application icon to launch it.
+Step 4: Use wait_5_seconds to let the application load fully.
 
-Step 5: If you still can't find it, the application may not be installed.
-        Report this to the user and stop.
+If the app is already running, look at the TASKBAR at the top of the screen
+and click on the app's name to bring its window to front.
 
-IMPORTANT: At each step, LOOK at the screenshot to verify what happened before
-moving to the next step. Never skip steps or assume something worked without checking.
+IMPORTANT: NEVER use keyboard shortcuts to launch applications. Always use the
+Applications menu or click icons you can see on screen.
 
 ## Coordinate System
 - Coordinates use a NORMALIZED 0-1000 grid for both X and Y.
