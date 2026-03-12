@@ -388,28 +388,53 @@ class CADAgent:
 
         Multi-feature indicators:
         - Multiple dimension groups (e.g. base_plate + vertical_wall)
-        - Keywords like bracket, fillet, chamfer, pocket, hole
+        - Keywords like bracket, fillet, chamfer
         - Multiple XxYxZ patterns in description
+
+        Single-primitive shapes (cube, box, cylinder, etc.) always return
+        False so they take the faster freeform path.
         """
         desc = task.description.lower()
         params = task.params or {}
 
-        # Multiple XxYxZ dimension patterns in description
+        # ── Guard: single-primitive shapes are NEVER multi-feature ──
+        # If the description clearly describes one simple shape, skip all
+        # multi-feature checks and go straight to the freeform path.
+        single_primitives = (
+            "cube", "box", "block", "brick", "slab",
+            "cylinder", "tube", "pipe", "rod", "bar",
+            "sphere", "ball", "dome",
+            "cone", "prism", "disc", "disk", "plate",
+            "washer", "ring", "bushing",
+        )
+        if any(word in desc for word in single_primitives):
+            # Even a "bracket" description might mention "plate" —
+            # only short-circuit when NO multi-feature keywords are present
+            multi_kw = ("bracket", "fillet", "chamfer", "counterbore", "countersink")
+            if not any(kw in desc for kw in multi_kw):
+                print(f"[CAD Agent] Single-primitive detected, skipping multi-feature check")
+                return False
+
+        # ── Check 1: Multiple XxYxZ dimension patterns in description ──
         dim_patterns = re.findall(r'\d+x\d+(?:x\d+)?', desc)
         if len(dim_patterns) >= 2:
+            print(f"[CAD Agent] Multi-feature: {len(dim_patterns)} dimension groups in description")
             return True
 
-        # Compound param keys (base_plate, vertical_wall, etc.)
+        # ── Check 2: Multiple compound param values (base_plate: 60x40x5mm) ──
         compound_keys = sum(1 for k, v in params.items()
                            if re.search(r'\d+x\d+', str(v)))
         if compound_keys >= 2:
+            print(f"[CAD Agent] Multi-feature: {compound_keys} compound dimension params")
             return True
 
-        # Multi-feature operation keywords
-        multi_kw = ("bracket", "fillet", "chamfer", "pocket", "hole",
-                    "groove", "slot", "notch", "boss", "rib",
-                    "step", "counterbore", "countersink")
+        # ── Check 3: Multi-feature shape keywords ──
+        # Only keywords that ALWAYS imply multiple Part Design operations.
+        # Removed: "hole", "slot", "pocket", "groove", "step", "boss", "rib",
+        #          "notch" — these are single operations, not multi-feature.
+        multi_kw = ("bracket", "fillet", "chamfer", "counterbore", "countersink")
         if any(kw in desc for kw in multi_kw):
+            print(f"[CAD Agent] Multi-feature: keyword match in description")
             return True
 
         return False
@@ -853,15 +878,18 @@ class CADAgent:
             skill = self._find_skill(task)
 
             if skill:
+                print(f"[CAD Agent] Route: SKILL — '{skill.get('name', '?')}'")
                 self._execute_skill(task, skill)
             elif self._is_multi_feature(task):
                 steps = self._decompose_task(task)
                 if steps:
+                    print(f"[CAD Agent] Route: MULTI-FEATURE — {len(steps)} steps")
                     self._execute_multi_feature(task, steps)
                 else:
-                    # Decomposition failed, fall back to freeform
+                    print(f"[CAD Agent] Route: FREEFORM (multi-feature detected but decomposition empty)")
                     self._execute_freeform(task)
             else:
+                print(f"[CAD Agent] Route: FREEFORM (single-feature)")
                 self._execute_freeform(task)
 
             task.complete(result="Design completed successfully")
