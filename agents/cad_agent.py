@@ -367,6 +367,414 @@ class CADAgent:
                 "   Verify: the rectangle should resize to the exact dimensions.\n\n"
             )
 
+    # ------------------------------------------------------------------
+    # Multi-feature task detection & decomposition
+    # ------------------------------------------------------------------
+
+    def _parse_dim_string(self, dim_str: str) -> dict:
+        """Parse a dimension string like '60x40x5mm' into {w, h, d}."""
+        nums = re.findall(r'(\d+(?:\.\d+)?)', str(dim_str))
+        result = {}
+        if len(nums) >= 1:
+            result['w'] = float(nums[0])
+        if len(nums) >= 2:
+            result['h'] = float(nums[1])
+        if len(nums) >= 3:
+            result['d'] = float(nums[2])
+        return result
+
+    def _is_multi_feature(self, task: Task) -> bool:
+        """Detect if a task requires multiple Part Design features.
+
+        Multi-feature indicators:
+        - Multiple dimension groups (e.g. base_plate + vertical_wall)
+        - Keywords like bracket, fillet, chamfer, pocket, hole
+        - Multiple XxYxZ patterns in description
+        """
+        desc = task.description.lower()
+        params = task.params or {}
+
+        # Multiple XxYxZ dimension patterns in description
+        dim_patterns = re.findall(r'\d+x\d+(?:x\d+)?', desc)
+        if len(dim_patterns) >= 2:
+            return True
+
+        # Compound param keys (base_plate, vertical_wall, etc.)
+        compound_keys = sum(1 for k, v in params.items()
+                           if re.search(r'\d+x\d+', str(v)))
+        if compound_keys >= 2:
+            return True
+
+        # Multi-feature operation keywords
+        multi_kw = ("bracket", "fillet", "chamfer", "pocket", "hole",
+                    "groove", "slot", "notch", "boss", "rib",
+                    "step", "counterbore", "countersink")
+        if any(kw in desc for kw in multi_kw):
+            return True
+
+        return False
+
+    def _decompose_task(self, task: Task) -> list[dict]:
+        """Decompose a multi-feature task into sequential operations.
+
+        Each returned dict has:
+          - title: human label for logging
+          - prompt: full prompt for one agentic_loop() call
+
+        The model sees each step independently with a fresh context,
+        but FreeCAD state carries over (the 3D model accumulates features).
+        """
+        desc = task.description.lower()
+        params = task.params or {}
+
+        if "l-bracket" in desc or "l bracket" in desc or "l-shape" in desc:
+            return self._decompose_l_bracket(params, task.description)
+
+        if "t-bracket" in desc or "t bracket" in desc or "t-shape" in desc:
+            return self._decompose_t_bracket(params, task.description)
+
+        # Generic: try to decompose based on param structure
+        return self._decompose_generic(params, task.description)
+
+    def _decompose_l_bracket(self, params: dict, description: str) -> list[dict]:
+        """Decompose an L-bracket into base plate + wall + fillets."""
+        # Parse compound dimensions from params
+        base_dims = None
+        wall_dims = None
+        fillet_r = 3.0  # default
+
+        for key, val in params.items():
+            val_str = str(val).lower()
+            key_lower = key.lower()
+            if any(k in key_lower for k in ("base", "plate", "bottom", "floor")):
+                base_dims = self._parse_dim_string(val_str)
+            elif any(k in key_lower for k in ("wall", "vertical", "upright", "side")):
+                wall_dims = self._parse_dim_string(val_str)
+            elif any(k in key_lower for k in ("fillet", "radius", "round")):
+                parsed = self._parse_mm(val_str)
+                if parsed > 0:
+                    fillet_r = parsed
+
+        # Fallback: extract from description
+        if not base_dims or not wall_dims:
+            dim_matches = re.findall(r'(\d+)x(\d+)x(\d+)', description.lower())
+            if len(dim_matches) >= 2:
+                d1 = [float(x) for x in dim_matches[0]]
+                d2 = [float(x) for x in dim_matches[1]]
+                base_dims = base_dims or {'w': d1[0], 'h': d1[1], 'd': d1[2]}
+                wall_dims = wall_dims or {'w': d2[0], 'h': d2[1], 'd': d2[2]}
+
+        if not base_dims:
+            base_dims = {'w': 60, 'h': 40, 'd': 5}
+        if not wall_dims:
+            wall_dims = {'w': 40, 'h': 30, 'd': 5}
+
+        base_w = base_dims.get('w', 60)
+        base_h = base_dims.get('h', 40)
+        base_d = base_dims.get('d', 5)
+        wall_w = wall_dims.get('w', 40)
+        wall_h = wall_dims.get('h', 30)
+        wall_d = wall_dims.get('d', 5)
+
+        print(f"[CAD Agent] L-bracket: base={base_w}x{base_h}x{base_d}, "
+              f"wall={wall_w}x{wall_h}x{wall_d}, fillet={fillet_r}")
+
+        reference = self._build_reference_from_tutorials()
+
+        steps = [
+            # ── Step 1: Setup + base plate sketch + pad ──
+            {
+                "title": f"Base plate: {base_w}x{base_h}mm sketch, pad {base_d}mm",
+                "prompt": (
+                    f"## Task: Create the BASE PLATE of an L-bracket\n"
+                    f"This is step 1 of 3. You are creating a {base_w}x{base_h}x{base_d}mm base plate.\n\n"
+                    f"{reference}\n"
+                    "## Execution Plan\n"
+                    "Follow these steps IN ORDER. After each step, study the screenshot to confirm.\n\n"
+
+                    "1. Minimize the terminal: right-click the terminal in the TASKBAR and click\n"
+                    "   \"Minimize\", or click the minimize button (—) in the title bar.\n\n"
+
+                    "2. Check if FreeCAD is open.\n"
+                    "   If YES: click on its window in the taskbar. If it has existing work,\n"
+                    "     create a NEW document: File menu → New.\n"
+                    "   If NO: open it via Applications menu → Graphics → FreeCAD.\n"
+                    "     Use wait_5_seconds to let it load.\n\n"
+
+                    "3. Ensure Part Design workbench is active.\n"
+                    "   Look at the menu bar — do you see \"Part Design\" as a menu item?\n"
+                    "   If NO: find the workbench dropdown in the toolbar and select \"Part Design\".\n\n"
+
+                    "4. Create a Body if none exists:\n"
+                    "   If model tree already shows \"Body\" and \"Origin\": skip to step 5.\n"
+                    "   Otherwise: Part Design menu → Create body.\n\n"
+
+                    "5. Create a sketch on XY plane:\n"
+                    "   Click \"Body\" in the model tree, then: Part Design menu → Create sketch.\n"
+                    "   Select XY_Plane and click OK.\n\n"
+
+                    "6. Draw a rectangle and constrain it:\n"
+                    "   a. Sketch menu → Sketcher geometries → Rectangle.\n"
+                    "   b. Click FIRST corner in the upper-left area (away from origin).\n"
+                    "   c. Click SECOND corner offset down-right.\n"
+                    "   d. Press Escape to exit the rectangle tool.\n"
+                    "   e. Click one HORIZONTAL edge, then:\n"
+                    "      Sketch menu → Sketcher constraints → Constrain distance.\n"
+                    f"      Type \"{base_w} mm\" and click OK.\n"
+                    "   f. Click one VERTICAL edge, then:\n"
+                    "      Sketch menu → Sketcher constraints → Constrain distance.\n"
+                    f"      Type \"{base_h} mm\" and click OK.\n\n"
+
+                    "7. Close the sketch: Sketch menu → Close sketch.\n\n"
+
+                    "8. Pad the sketch:\n"
+                    "   Part Design menu → Pad.\n"
+                    f"   Set Length to \"{base_d} mm\", click OK.\n"
+                    "   Then: View menu → Standard views → Fit All.\n\n"
+
+                    "9. Call task_complete(summary=\"Base plate created\").\n\n"
+
+                    "CRITICAL RULES:\n"
+                    "- Use MENU BAR for ALL operations, never click tiny toolbar icons.\n"
+                    "- NEVER use Delete key — use Edit menu → Undo or Ctrl+Z.\n"
+                    "- Draw rectangle AWAY from the origin center.\n"
+                    "- Always type dimensions WITH \" mm\" unit.\n"
+                    "- Close sketch via Sketch menu → Close sketch (NOT Escape).\n"
+                ),
+            },
+
+            # ── Step 2: Vertical wall sketch on top face + pad ──
+            {
+                "title": f"Vertical wall: sketch on top face, pad {wall_h}mm",
+                "prompt": (
+                    f"## Task: Add the VERTICAL WALL to the L-bracket\n"
+                    f"This is step 2 of 3. The base plate already exists.\n"
+                    f"You need to add a {wall_w}x{wall_d}mm wall that rises {wall_h}mm from one edge.\n\n"
+                    f"{reference}\n"
+                    "## Execution Plan\n"
+                    "The base plate (the rectangular solid) is already visible in FreeCAD.\n"
+                    "You need to create a NEW sketch on the TOP face of the base plate.\n\n"
+
+                    "1. First, look at the 3D viewport. You should see the base plate solid.\n"
+                    "   If you cannot see it clearly, use: View menu → Standard views → Top.\n"
+                    "   Then: View menu → Standard views → Fit All.\n\n"
+
+                    "2. Select the TOP FACE of the base plate:\n"
+                    "   Click directly on the TOP FACE of the solid in the 3D viewport.\n"
+                    "   The face should highlight (change color) when selected.\n"
+                    "   TIP: If you have trouble selecting the face, try:\n"
+                    "   - View menu → Standard views → Top (to look straight down)\n"
+                    "   - Then click on the flat rectangular surface\n\n"
+
+                    "3. Create a new sketch on the selected face:\n"
+                    "   With the top face selected, go to: Part Design menu → Create sketch.\n"
+                    "   FreeCAD should automatically use the selected face as the sketch plane.\n"
+                    "   If a plane dialog appears, select the face reference and click OK.\n\n"
+
+                    "4. Draw the wall profile rectangle:\n"
+                    "   The wall sits along ONE EDGE of the base plate.\n"
+                    "   a. Sketch menu → Sketcher geometries → Rectangle.\n"
+                    "   b. Click FIRST corner near one edge of the base plate outline.\n"
+                    "      Position it at one end of the base plate.\n"
+                    "   c. Click SECOND corner to create a narrow rectangle along that edge.\n"
+                    f"      The rectangle should be roughly {wall_w}mm long and {wall_d}mm wide.\n"
+                    "   d. Press Escape to exit the rectangle tool.\n\n"
+
+                    "5. Constrain the wall rectangle:\n"
+                    "   a. Click one HORIZONTAL edge (the long side), then:\n"
+                    "      Sketch menu → Sketcher constraints → Constrain distance.\n"
+                    f"      Type \"{wall_w} mm\" and click OK.\n"
+                    "   b. Click one VERTICAL edge (the short side), then:\n"
+                    "      Sketch menu → Sketcher constraints → Constrain distance.\n"
+                    f"      Type \"{wall_d} mm\" and click OK.\n\n"
+
+                    "6. Close the sketch: Sketch menu → Close sketch.\n\n"
+
+                    "7. Pad the wall upward:\n"
+                    "   Part Design menu → Pad.\n"
+                    f"   Set Length to \"{wall_h} mm\", click OK.\n"
+                    "   Then: View menu → Standard views → Fit All.\n"
+                    "   You should now see the L-bracket shape: base plate with wall rising from one edge.\n\n"
+
+                    "8. Call task_complete(summary=\"Vertical wall added\").\n\n"
+
+                    "CRITICAL RULES:\n"
+                    "- Use MENU BAR for ALL operations, never click tiny toolbar icons.\n"
+                    "- NEVER use Delete key — use Edit menu → Undo or Ctrl+Z.\n"
+                    "- Always type dimensions WITH \" mm\" unit.\n"
+                    "- Close sketch via Sketch menu → Close sketch (NOT Escape).\n"
+                    "- The wall rectangle must be positioned ALONG ONE EDGE of the base.\n"
+                ),
+            },
+
+            # ── Step 3: Fillet at junction ──
+            {
+                "title": f"Apply {fillet_r}mm fillet at junction",
+                "prompt": (
+                    f"## Task: Apply FILLETS to the L-bracket junction\n"
+                    f"This is step 3 of 3. The L-bracket (base plate + vertical wall) already exists.\n"
+                    f"You need to apply {fillet_r}mm fillets at the junction edges where the wall meets the base.\n\n"
+                    f"{reference}\n"
+                    "## Execution Plan\n"
+                    "The L-bracket is visible in FreeCAD. You need to select the junction\n"
+                    "edges and apply a fillet operation.\n\n"
+
+                    "1. First, get a good view of the L-bracket:\n"
+                    "   View menu → Standard views → Home (or Isometric/Front).\n"
+                    "   Then: View menu → Standard views → Fit All.\n"
+                    "   You should see the L-shape clearly with the base and wall.\n\n"
+
+                    "2. Select the junction edge(s):\n"
+                    "   The junction is the INNER edge(s) where the vertical wall meets the base plate.\n"
+                    "   Click on one of these EDGES (the line where base and wall meet on the INSIDE).\n"
+                    "   The edge should highlight when selected.\n"
+                    "   TIP: You may need to rotate the view to see the inner edges clearly.\n"
+                    "   Use middle-mouse-button drag or: View menu → Standard views to change angle.\n\n"
+
+                    "3. Apply the Fillet:\n"
+                    "   With the edge selected, go to: Part Design menu → Fillet.\n"
+                    "   A dialog appears in the Tasks panel with a Radius input field.\n"
+                    f"   Set the Radius to \"{fillet_r} mm\".\n"
+                    "   Click OK to apply the fillet.\n"
+                    "   You should see the sharp edge replaced by a smooth rounded surface.\n\n"
+
+                    "4. Verify and finish:\n"
+                    "   View menu → Standard views → Fit All.\n"
+                    "   Check that the fillet is applied correctly at the junction.\n\n"
+
+                    "5. Call task_complete(summary=\"Fillets applied to L-bracket junction\").\n\n"
+
+                    "CRITICAL RULES:\n"
+                    "- Use MENU BAR for ALL operations.\n"
+                    "- Select EDGES, not faces, for the fillet operation.\n"
+                    "- The fillet is on the INSIDE junction, not the outside.\n"
+                    "- If fillet fails, try selecting a different edge at the junction.\n"
+                    "- Always type dimensions WITH \" mm\" unit.\n"
+                ),
+            },
+        ]
+
+        return steps
+
+    def _decompose_t_bracket(self, params: dict, description: str) -> list[dict]:
+        """Decompose a T-bracket into base + vertical member + fillets."""
+        # Similar to L-bracket but wall is centered on base
+        # For now, delegate to generic
+        return self._decompose_generic(params, description)
+
+    def _decompose_generic(self, params: dict, description: str) -> list[dict]:
+        """Generic decomposition: extract features from params and build steps."""
+        # Find dimension groups in params (values matching NxNxN or NxN)
+        features = []
+        fillet_r = None
+
+        for key, val in params.items():
+            val_str = str(val)
+            key_lower = key.lower()
+            dims = self._parse_dim_string(val_str)
+            if dims.get('w') and dims.get('h'):
+                features.append({'name': key, 'dims': dims})
+            elif any(k in key_lower for k in ("fillet", "chamfer", "radius", "round")):
+                parsed = self._parse_mm(val_str)
+                if parsed > 0:
+                    fillet_r = parsed
+
+        if not features:
+            # Can't decompose — fall back to single-feature
+            return []
+
+        reference = self._build_reference_from_tutorials()
+        steps = []
+
+        for i, feat in enumerate(features):
+            d = feat['dims']
+            w = d.get('w', 50)
+            h = d.get('h', 30)
+            depth = d.get('d', 10)
+            name = feat['name'].replace('_', ' ').title()
+            is_first = (i == 0)
+
+            setup_block = ""
+            if is_first:
+                setup_block = (
+                    "1. Minimize the terminal (right-click taskbar → Minimize).\n\n"
+                    "2. Open FreeCAD if not already open (Applications → Graphics → FreeCAD).\n"
+                    "   If it has existing work, create a new document: File → New.\n\n"
+                    "3. Ensure Part Design workbench is active (check menu bar).\n\n"
+                    "4. Create a Body if needed: Part Design menu → Create body.\n\n"
+                    "5. Create sketch on XY plane: Part Design menu → Create sketch → XY_Plane → OK.\n\n"
+                )
+            else:
+                setup_block = (
+                    "1. Select the TOP FACE of the existing solid in the 3D viewport.\n"
+                    "   Click directly on the face — it should highlight.\n"
+                    "   TIP: Use View menu → Standard views → Top to look straight down.\n\n"
+                    "2. Create a new sketch on that face: Part Design menu → Create sketch.\n\n"
+                )
+
+            step_offset = 6 if is_first else 3
+            steps.append({
+                "title": f"{name}: {w}x{h}mm sketch, pad {depth}mm",
+                "prompt": (
+                    f"## Task: Create feature '{name}' ({w}x{h}x{depth}mm)\n"
+                    f"This is feature {i+1} of {len(features)}.\n"
+                    f"{'This is the first feature — start from scratch.' if is_first else 'Previous features already exist in the model.'}\n\n"
+                    f"{reference}\n"
+                    "## Execution Plan\n\n"
+                    f"{setup_block}"
+                    f"{step_offset}. Draw a rectangle and constrain it:\n"
+                    "   a. Sketch menu → Sketcher geometries → Rectangle.\n"
+                    "   b. Click FIRST corner, then SECOND corner.\n"
+                    "   c. Press Escape to exit tool.\n"
+                    "   d. Click horizontal edge → Sketch menu → Sketcher constraints → Constrain distance.\n"
+                    f"      Type \"{w} mm\" → OK.\n"
+                    "   e. Click vertical edge → Sketch menu → Sketcher constraints → Constrain distance.\n"
+                    f"      Type \"{h} mm\" → OK.\n\n"
+                    f"{step_offset+1}. Close sketch: Sketch menu → Close sketch.\n\n"
+                    f"{step_offset+2}. Pad: Part Design menu → Pad. Length = \"{depth} mm\". OK.\n"
+                    "   View menu → Standard views → Fit All.\n\n"
+                    f"{step_offset+3}. Call task_complete(summary=\"{name} created\").\n\n"
+                    "CRITICAL: Use MENU BAR for everything. Type \" mm\" with dimensions. Never use Delete key.\n"
+                ),
+            })
+
+        # Add fillet step if specified
+        if fillet_r:
+            steps.append({
+                "title": f"Apply {fillet_r}mm fillets",
+                "prompt": (
+                    f"## Task: Apply {fillet_r}mm fillets to junction edges\n"
+                    f"{reference}\n"
+                    "## Execution Plan\n"
+                    "1. View menu → Standard views → Home/Isometric → Fit All.\n"
+                    "2. Click on the INNER junction EDGE where features meet.\n"
+                    "3. Part Design menu → Fillet.\n"
+                    f"4. Set Radius to \"{fillet_r} mm\", click OK.\n"
+                    "5. Call task_complete(summary=\"Fillets applied\").\n"
+                ),
+            })
+
+        return steps
+
+    def _execute_multi_feature(self, task: Task, steps: list[dict]):
+        """Execute a decomposed multi-feature task step by step.
+
+        Each step runs as an independent agentic_loop() call with its own
+        context and turn budget. FreeCAD state carries over between steps
+        because the desktop persists.
+        """
+        total = len(steps)
+        print(f"[CAD Agent] Multi-feature task: {total} steps")
+
+        for i, step in enumerate(steps):
+            print(f"[CAD Agent] Step {i+1}/{total}: {step['title']}")
+            self.loop.agentic_loop(step["prompt"], self.executor)
+            print(f"[CAD Agent] Step {i+1}/{total} complete")
+
+    # ------------------------------------------------------------------
+    # Main entry point
+    # ------------------------------------------------------------------
+
     def execute(self, task: Task) -> Task:
         """Execute a CAD design task.
 
@@ -374,7 +782,9 @@ class CADAgent:
         1. Clean up FreeCAD environment (recovery files)
         2. Check if a YAML skill exists for the task
         3. If yes — decompose using the skill steps
-        4. If no — build a detailed prompt and let the agentic loop handle it
+        4. Check if the task is multi-feature (bracket, fillet, etc.)
+        5. If yes — decompose into sequential operations
+        6. Otherwise — build a single prompt and let the agentic loop handle it
         """
         task.status = TaskStatus.WORKING
         print(f"\n[CAD Agent] Starting task: {task.description}")
@@ -386,6 +796,13 @@ class CADAgent:
 
             if skill:
                 self._execute_skill(task, skill)
+            elif self._is_multi_feature(task):
+                steps = self._decompose_task(task)
+                if steps:
+                    self._execute_multi_feature(task, steps)
+                else:
+                    # Decomposition failed, fall back to freeform
+                    self._execute_freeform(task)
             else:
                 self._execute_freeform(task)
 
