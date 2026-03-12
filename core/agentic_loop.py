@@ -358,8 +358,11 @@ class AgenticLoop:
             max_output_tokens=8192,
             tools=[cu_tool, types.Tool(function_declarations=all_declarations)],
             thinking_config=types.ThinkingConfig(include_thoughts=True),
-            # Ultra-high resolution required for computer use (2240 tokens/image).
-            media_resolution=types.MediaResolution.MEDIA_RESOLUTION_ULTRA_HIGH,
+            # Highest available resolution for computer use screenshots.
+            media_resolution=getattr(
+                types.MediaResolution, "MEDIA_RESOLUTION_ULTRA_HIGH",
+                types.MediaResolution.MEDIA_RESOLUTION_HIGH,
+            ),
             # Disable AFC — we handle function calls manually in the agentic loop.
             # This suppresses the "Tools at indices [1] are not compatible with AFC" warning.
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
