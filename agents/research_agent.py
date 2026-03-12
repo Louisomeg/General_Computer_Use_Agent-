@@ -41,8 +41,8 @@ except ImportError:
 # pro is the smart one, flash is the fast one.
 # we only hit pro once for planning cos its expensive.
 # flash does all the actual browsing.
-PLANNING_MODEL = "gemini-3-pro-preview"
-BROWSER_MODEL = "gemini-3-flash-preview"
+PLANNING_MODEL = "gemini-3.1-pro-preview"
+BROWSER_MODEL = "gemini-3.1-pro-preview"
 
 # this prompt took me ages to get right honestly. every line is here
 # cos without it the model does something stupid. like it would just

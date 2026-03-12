@@ -146,7 +146,7 @@ and values. Mention the sources briefly. If confidence is low, note any gaps.
 Do NOT use markdown formatting. Just plain text paragraphs."""
 
             resp = self.client.models.generate_content(
-                model="gemini-3-pro-preview",
+                model="gemini-3.1-pro-preview",
                 contents=prompt
             )
             print("[DocumentationAgent] Enhanced summary generated")

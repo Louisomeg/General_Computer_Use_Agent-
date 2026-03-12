@@ -15,8 +15,8 @@ from core.executor import Executor
 class DesktopExecutor(Executor):
     """Executes Gemini computer-use function calls on an Ubuntu desktop via xdotool.
 
-    Handles both predefined Gemini functions (click_at, type_text_at, etc.)
-    and custom functions (system_shortcut, freecad_shortcut, etc.).
+    Handles predefined Gemini functions (click_at, type_text_at, etc.)
+    and custom functions (right_click_at, double_click_at, open_application).
     All actions are performed through xdotool subprocess calls.
 
     Coordinate mapping:
@@ -32,9 +32,29 @@ class DesktopExecutor(Executor):
         The closest available VM resolution is 1280x800 (same 16:10 aspect).
     """
 
+    # Functions that don't need a post-action UI settling delay
+    _NO_DELAY_FUNCTIONS = frozenset({"task_complete", "wait_5_seconds"})
+
     def __init__(self, screen_width: int = None, screen_height: int = None):
         self.screen_width = screen_width or SCREEN_WIDTH
         self.screen_height = screen_height or SCREEN_HEIGHT
+        self._handlers = {
+            # Predefined Gemini functions (desktop via xdotool)
+            "click_at": self._click_at,
+            "hover_at": self._hover_at,
+            "type_text_at": self._type_text_at,
+            "key_combination": self._key_combination,
+            "scroll_at": self._scroll_at,
+            "scroll_document": self._scroll_document,
+            "drag_and_drop": self._drag_and_drop,
+            "wait_5_seconds": self._wait,
+            # Custom functions
+            "right_click_at": self._right_click_at,
+            "double_click_at": self._double_click_at,
+            "open_application": self._open_application,
+            # Completion signal
+            "task_complete": self._task_complete,
+        }
 
     def denormalize(self, x: int, y: int) -> tuple:
         """Convert normalized 0-1000 coordinates to actual screen pixels.
@@ -78,33 +98,15 @@ class DesktopExecutor(Executor):
                 print(f"  Error executing {function_name}: {e}")
                 result = {"error": str(e)}
 
-            time.sleep(ACTION_DELAY)
+            if function_name not in self._NO_DELAY_FUNCTIONS:
+                time.sleep(ACTION_DELAY)
             results.append((function_name, result))
 
         return results
 
     def _get_handler(self, name: str):
         """Return the handler method for a given function name, or None."""
-        handlers = {
-            # Predefined Gemini functions (desktop via xdotool)
-            "click_at": self._click_at,
-            "hover_at": self._hover_at,
-            "type_text_at": self._type_text_at,
-            "key_combination": self._key_combination,
-            "scroll_at": self._scroll_at,
-            "scroll_document": self._scroll_document,
-            "drag_and_drop": self._drag_and_drop,
-            "wait_5_seconds": self._wait,
-            # Custom functions
-            "system_shortcut": self._system_shortcut,
-            "freecad_shortcut": self._freecad_shortcut,
-            "right_click_at": self._right_click_at,
-            "double_click_at": self._double_click_at,
-            "open_application": self._open_application,
-            # Completion signal
-            "task_complete": self._task_complete,
-        }
-        return handlers.get(name)
+        return self._handlers.get(name)
 
     # =========================================================================
     # Predefined function handlers (xdotool implementations)
@@ -112,15 +114,11 @@ class DesktopExecutor(Executor):
 
     def _click_at(self, args: dict) -> dict:
         x, y = self.denormalize(args["x"], args["y"])
-        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
-        subprocess.run(["xdotool", "click", "1"], check=True)
-        time.sleep(CLICK_DELAY)
-        return {"success": True}
+        return freecad_functions.system_click(x, y)
 
     def _hover_at(self, args: dict) -> dict:
         x, y = self.denormalize(args["x"], args["y"])
-        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
-        return {"success": True}
+        return freecad_functions.system_hover(x, y)
 
     def _type_text_at(self, args: dict) -> dict:
         x, y = self.denormalize(args["x"], args["y"])
@@ -212,42 +210,14 @@ class DesktopExecutor(Executor):
         x, y = self.denormalize(args["x"], args["y"])
         direction = args["direction"]
         magnitude = args.get("magnitude", 500)
-
         # Convert magnitude (0-1000) to scroll wheel clicks (1-10)
         scroll_clicks = max(1, int(magnitude / 100))
-
-        button_map = {"up": "4", "down": "5", "left": "6", "right": "7"}
-        button = button_map.get(direction)
-        if not button:
-            return {"error": f"Unknown scroll direction: {direction}"}
-
-        subprocess.run(["xdotool", "mousemove", str(x), str(y)], check=True)
-        subprocess.run(
-            ["xdotool", "click", "--repeat", str(scroll_clicks), button],
-            check=True,
-        )
-        return {"success": True}
+        return freecad_functions.system_scroll(x, y, direction, scroll_clicks)
 
     def _scroll_document(self, args: dict) -> dict:
-        direction = args["direction"]
-        # Scroll at screen center with default magnitude
         center_x = self.screen_width // 2
         center_y = self.screen_height // 2
-
-        button_map = {"up": "4", "down": "5", "left": "6", "right": "7"}
-        button = button_map.get(direction)
-        if not button:
-            return {"error": f"Unknown scroll direction: {direction}"}
-
-        subprocess.run(
-            ["xdotool", "mousemove", str(center_x), str(center_y)],
-            check=True,
-        )
-        subprocess.run(
-            ["xdotool", "click", "--repeat", "5", button],
-            check=True,
-        )
-        return {"success": True}
+        return freecad_functions.system_scroll(center_x, center_y, args["direction"], 5)
 
     def _drag_and_drop(self, args: dict) -> dict:
         start_x, start_y = self.denormalize(args["x"], args["y"])
@@ -273,12 +243,6 @@ class DesktopExecutor(Executor):
     # =========================================================================
     # Custom function handlers (delegate to freecad_functions)
     # =========================================================================
-
-    def _system_shortcut(self, args: dict) -> dict:
-        return freecad_functions.execute_system_shortcut(args["shortcut_name"])
-
-    def _freecad_shortcut(self, args: dict) -> dict:
-        return freecad_functions.execute_freecad_shortcut(args["shortcut_name"])
 
     def _right_click_at(self, args: dict) -> dict:
         x, y = self.denormalize(args["x"], args["y"])

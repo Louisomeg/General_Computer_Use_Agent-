@@ -22,41 +22,6 @@ from core.models import Task, TaskStatus, ProcedureState, load_skill, load_tutor
 from core.settings import SYSTEM_INSTRUCTION
 
 
-# ---------------------------------------------------------------------------
-# Shortcut filters — only include shortcuts the CAD agent actually needs.
-# This reduces per-turn tool description overhead from ~10,000 chars to ~2,400.
-# Shortcuts not listed here still WORK (the executor has them all), the model
-# just won't see them in the function description and won't call them.
-# ---------------------------------------------------------------------------
-
-CAD_UBUNTU_SHORTCUTS = {
-    "minimize_window", "close_window", "maximize_window",
-    "snap_window_left", "snap_window_right",
-    "switch_window_forward",
-    "copy", "paste", "cut", "select_all", "undo", "redo",
-    "save", "save_as",
-    "open_terminal",
-}
-
-CAD_FREECAD_SHORTCUTS = {
-    # File / Edit — standard Ctrl+key combos, always work regardless of focus
-    "file_new", "file_save", "file_save_as", "file_export",
-    "edit_undo", "edit_redo", "cancel_operation", "toggle_visibility",
-    # View — simple single-key presses, useful after exiting sketcher
-    "view_isometric", "view_front", "view_top", "view_right",
-    "view_fit_all", "view_fit_selection",
-    "view_orthographic", "view_perspective",
-    # --------------------------------------------------------------------------
-    # ALL sketcher geometry and constraint shortcuts have been REMOVED.
-    # The model uses the Sketch menu instead — menus are visible, verifiable,
-    # and don't depend on keyboard focus or context. This eliminates silent
-    # failures from focus being on the wrong panel or key collisions.
-    # Pad/Pocket also have no default shortcut — use Part Design menu.
-    # Close sketch — use Sketch menu → Close sketch (not Escape).
-    # --------------------------------------------------------------------------
-}
-
-
 # Agent Card — describes what this agent can do (A2A-style, kept in code)
 AGENT_CARD = {
     "name": "cad_agent",
@@ -87,7 +52,6 @@ AGENT_CARD = {
 #   - visual-first navigation (look at screenshot, click visible elements)
 #   - GNOME desktop navigation (Activities, taskbar, app grid)
 #   - 5-step application launch procedure
-#   - when to use shortcuts vs GUI clicks
 #   - FreeCAD basics (menus, toolbars, panels)
 #
 # This addendum adds CAD-specific workflow on top of that foundation.
@@ -97,15 +61,13 @@ CAD_ADDENDUM = """
 
 ## CRITICAL: Terminal Window
 When you start, you will see a terminal window on screen running the agent script.
-IMMEDIATELY minimize it with system_shortcut("minimize_window") as your FIRST action.
-Do NOT try to close, read, or interact with the terminal — just minimize it and move on.
+IMMEDIATELY right-click the terminal in the TASKBAR (top bar) and click "Minimize",
+or click the minimize button (—) in the terminal's title bar. Do NOT try to close,
+read, or interact with the terminal — just minimize it and move on.
 After minimizing, focus EXCLUSIVELY on FreeCAD for the rest of the task.
 
 ## PRIMARY METHOD: Use FreeCAD Menus for ALL Operations
 FreeCAD toolbar icons are TINY (~24px) and packed tightly together — NEVER click them.
-Keyboard shortcuts are UNRELIABLE because they depend on which panel has keyboard focus,
-and some keys mean different things in different contexts (e.g. V = vertical constraint
-inside sketcher, but V = start of view command outside sketcher).
 
 ALWAYS use the MENU BAR at the top of the window for ALL FreeCAD operations:
 
@@ -118,6 +80,8 @@ ALWAYS use the MENU BAR at the top of the window for ALL FreeCAD operations:
 - Create sketch / Create body: "Part Design" menu → choose item
   NOTE: In FreeCAD 1.0, the menu item is "Create sketch" (NOT "New Sketch").
 - View operations: "View" menu → "Standard views" → choose view
+- File operations: "File" menu → "New", "Save", "Save As", "Export"
+- Undo: "Edit" menu → "Undo" (use this instead of Ctrl+Z)
 
 HOW TO NAVIGATE SUBMENUS:
 1. Click the menu name in the menu bar (e.g. "Sketch")
@@ -127,7 +91,7 @@ If the submenu doesn't appear, try clicking on the submenu item instead of hover
 
 THE ONLY KEYBOARD ACTIONS YOU SHOULD USE:
 - key_combination("escape") — cancel an active tool (e.g. after drawing a rectangle)
-- freecad_shortcut("edit_undo") — Ctrl+Z to undo mistakes (press MULTIPLE TIMES)
+- key_combination("ctrl+z") — undo mistakes (press MULTIPLE TIMES)
 - Typing values into dialog fields (e.g. "30 mm" in a constraint dialog)
 - If Escape or Undo seems to not work, click once in the 3D viewport first, then retry.
 
@@ -165,7 +129,8 @@ ALTERNATIVE: click the "Close" button in the Tasks panel (left side).
 
 ## Error Recovery — CRITICAL RULES
 - NEVER use the Delete key. It permanently removes the WRONG thing.
-- ALWAYS use freecad_shortcut("edit_undo") (Ctrl+Z) to fix mistakes. Press MULTIPLE TIMES.
+- ALWAYS use "Edit" menu → "Undo" or key_combination("ctrl+z") to fix mistakes.
+  Press MULTIPLE TIMES to undo several steps.
 - If you trigger a wrong tool: key_combination("escape"), then undo multiple times.
 - If you leave a sketch by accident: double-click "Sketch" in the model tree to re-enter.
 - After 3 failed attempts at the SAME action, call task_complete() with a status report.
@@ -207,19 +172,12 @@ class CADAgent:
         self.client = client
         self.executor = executor
 
-        # Build filtered tool declarations — only shortcuts the CAD agent needs.
-        # Reduces per-turn overhead from ~10,000 chars to ~2,400 chars.
-        cad_declarations = get_custom_declarations(
-            ubuntu_filter=CAD_UBUNTU_SHORTCUTS,
-            freecad_filter=CAD_FREECAD_SHORTCUTS,
-        )
-
         self.loop = AgenticLoop(
             client,
             system_instruction=CAD_SYSTEM_INSTRUCTION,   # base + CAD addendum
             max_turns=25,
             extra_declarations=[TASK_COMPLETE_DECLARATION],
-            custom_declarations=cad_declarations,
+            custom_declarations=get_custom_declarations(),
         )
         self.state = None  # active ProcedureState, if running a skill
 
@@ -404,14 +362,15 @@ class CADAgent:
             "Follow these steps IN ORDER. After each step, study the screenshot to confirm it worked.\n"
             "If a step fails, read the PREREQUISITE CHECK before retrying.\n\n"
 
-            "1. Minimize the terminal: system_shortcut(\"minimize_window\")\n\n"
+            "1. Minimize the terminal: right-click the terminal in the TASKBAR and click\n"
+            "   \"Minimize\", or click the minimize button (—) in the terminal's title bar.\n\n"
 
             "2. Check if FreeCAD is open.\n"
             "   If YES: click on its window in the taskbar to bring it to focus.\n"
             "     IMPORTANT: If FreeCAD already has a document open with existing work\n"
             "     (you see shapes in the viewport or items in the model tree besides\n"
-            "     the default empty state), create a NEW document first:\n"
-            "     freecad_shortcut(\"file_new\") (Ctrl+N). This gives you a clean start.\n"
+            "     the default empty state), create a NEW document: click \"File\" in the\n"
+            "     MENU BAR → click \"New\". This gives you a clean start.\n"
             "     Do NOT try to modify or interact with existing geometry.\n"
             "   If NO: use open_application(\"FreeCAD\"), then wait_5_seconds.\n\n"
 
@@ -493,13 +452,15 @@ class CADAgent:
             "9. Call task_complete() with a summary of what was built.\n\n"
 
             "CRITICAL RULES:\n"
-            "- NEVER use the Delete key. Use freecad_shortcut(\"edit_undo\") to fix mistakes.\n"
+            "- NEVER use the Delete key. Use Edit menu → Undo or key_combination(\"ctrl+z\").\n"
             "- Use the MENU BAR for ALL FreeCAD operations:\n"
             "  * Sketch menu → Sketcher geometries (for Rectangle, Line, Circle, etc.)\n"
             "  * Sketch menu → Sketcher constraints (for Constrain distance, etc.)\n"
             "  * Sketch menu → Close sketch\n"
             "  * Part Design menu → Pad, Pocket, Create sketch, Create body\n"
             "  * View menu → Standard views → Fit All\n"
+            "  * File menu → New, Save, Save As, Export\n"
+            "  * Edit menu → Undo, Redo\n"
             "- The ONLY keyboard actions: Escape (cancel tool), Ctrl+Z (undo), typing in dialogs.\n"
             "- Do NOT use keyboard shortcuts for geometry tools or constraints — use menus.\n"
             "- Close sketch via Sketch menu → Close sketch (NOT by pressing Escape).\n"

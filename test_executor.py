@@ -9,7 +9,7 @@ import sys
 
 
 def test_logic():
-    """Test all imports, dict sizes, coordinate mapping, and handler lookup.
+    """Test all imports, coordinate mapping, and handler lookup.
     Works on any OS — no xdotool needed.
     """
     print("=" * 60)
@@ -20,30 +20,10 @@ def test_logic():
 
     # --- Test 1: settings.py ---
     try:
-        from core.settings import (
-            UBUNTU_SHORTCUTS, FREECAD_SHORTCUTS,
-            EXCLUDED_PREDEFINED_FUNCTIONS,
-            SCREEN_WIDTH, SCREEN_HEIGHT,
-        )
-        assert len(UBUNTU_SHORTCUTS) >= 80, f"Expected 80+ Ubuntu shortcuts, got {len(UBUNTU_SHORTCUTS)}"
-        assert len(FREECAD_SHORTCUTS) >= 50, f"Expected 50+ FreeCAD shortcuts, got {len(FREECAD_SHORTCUTS)}"
-        assert len(EXCLUDED_PREDEFINED_FUNCTIONS) == 5
+        from core.settings import SCREEN_WIDTH, SCREEN_HEIGHT
         assert SCREEN_WIDTH == 1280
         assert SCREEN_HEIGHT == 800
-
-        # Check two-key sequences exist
-        two_key = [k for k, v in FREECAD_SHORTCUTS.items() if isinstance(v["keys"], list)]
-        assert len(two_key) >= 20, f"Expected 20+ two-key sequences, got {len(two_key)}"
-
-        # Check every entry has required fields
-        for name, entry in UBUNTU_SHORTCUTS.items():
-            assert "keys" in entry, f"Ubuntu shortcut '{name}' missing 'keys'"
-            assert "description" in entry, f"Ubuntu shortcut '{name}' missing 'description'"
-        for name, entry in FREECAD_SHORTCUTS.items():
-            assert "keys" in entry, f"FreeCAD shortcut '{name}' missing 'keys'"
-            assert "description" in entry, f"FreeCAD shortcut '{name}' missing 'description'"
-
-        print(f"  [PASS] settings.py — {len(UBUNTU_SHORTCUTS)} Ubuntu + {len(FREECAD_SHORTCUTS)} FreeCAD shortcuts")
+        print(f"  [PASS] settings.py — screen {SCREEN_WIDTH}x{SCREEN_HEIGHT}")
         passed += 1
     except Exception as e:
         print(f"  [FAIL] settings.py — {e}")
@@ -62,11 +42,10 @@ def test_logic():
     # --- Test 3: freecad_functions.py imports ---
     try:
         from core.freecad_functions import (
-            execute_system_shortcut, execute_freecad_shortcut,
-            open_application, type_system_text,
-            system_click, right_click, double_click, system_scroll,
+            open_application, system_click, system_hover,
+            right_click, double_click, system_scroll,
         )
-        print(f"  [PASS] freecad_functions.py — all 8 functions importable")
+        print(f"  [PASS] freecad_functions.py — all 6 functions importable")
         passed += 1
     except Exception as e:
         print(f"  [FAIL] freecad_functions.py — {e}")
@@ -74,25 +53,16 @@ def test_logic():
 
     # --- Test 4: custom_tools.py ---
     try:
-        from core.custom_tools import get_custom_declarations, get_excluded_functions
+        from core.custom_tools import get_custom_declarations
 
         declarations = get_custom_declarations()
-        assert len(declarations) == 5, f"Expected 5 declarations, got {len(declarations)}"
+        assert len(declarations) == 3, f"Expected 3 declarations, got {len(declarations)}"
 
         names = [d.name for d in declarations]
-        expected_names = ["system_shortcut", "freecad_shortcut", "right_click_at", "double_click_at", "open_application"]
+        expected_names = ["right_click_at", "double_click_at", "open_application"]
         assert names == expected_names, f"Declaration names mismatch: {names}"
 
-        excluded = get_excluded_functions()
-        assert len(excluded) == 5
-
-        # Check that descriptions contain shortcut listings
-        sys_desc = declarations[0].description
-        assert "maximize_window" in sys_desc, "system_shortcut description should list shortcuts"
-        fc_desc = declarations[1].description
-        assert "sketcher_line" in fc_desc, "freecad_shortcut description should list shortcuts"
-
-        print(f"  [PASS] custom_tools.py — 5 declarations, descriptions populated")
+        print(f"  [PASS] custom_tools.py — 3 declarations verified")
         passed += 1
     except Exception as e:
         print(f"  [FAIL] custom_tools.py — {e}")
@@ -107,7 +77,6 @@ def test_logic():
         assert executor.screen_height == 800
 
         # Denormalize tests: 0-1000 normalized → actual screen pixels
-        # Screen is 1280x800.
         sx, sy = executor.denormalize(0, 0)
         assert sx == 0 and sy == 0, f"Origin should map to (0,0), got ({sx},{sy})"
 
@@ -120,28 +89,23 @@ def test_logic():
         assert sx == expected_x and sy == expected_y, \
             f"Max should map to ({expected_x},{expected_y}), got ({sx},{sy})"
 
-        # Typical menu click: normalized x=133 → 133/1000*1280 = 170 (Part Design)
-        sx, sy = executor.denormalize(133, 25)
-        assert sx == int(133 / 1000 * 1280), f"Menu x mismatch: got {sx}"
-        assert sy == int(25 / 1000 * 800), f"Menu y mismatch: got {sy}"
-
         # Custom screen size (e.g. 1440x900 recommended)
         executor2 = DesktopExecutor(screen_width=1440, screen_height=900)
         sx, sy = executor2.denormalize(500, 500)
         assert sx == 720 and sy == 450, f"Custom center: got ({sx},{sy})"
 
-        # Handler lookup (14 handlers including task_complete)
+        # Handler lookup (12 handlers)
         for name in ["click_at", "hover_at", "type_text_at", "key_combination",
                       "scroll_at", "scroll_document", "drag_and_drop", "wait_5_seconds",
-                      "system_shortcut", "freecad_shortcut", "right_click_at",
-                      "double_click_at", "open_application", "task_complete"]:
+                      "right_click_at", "double_click_at", "open_application",
+                      "task_complete"]:
             handler = executor._get_handler(name)
             assert handler is not None, f"Missing handler for '{name}'"
 
         # Unknown function returns None
         assert executor._get_handler("nonexistent_function") is None
 
-        print(f"  [PASS] desktop_executor.py — class, denormalize, 14 handlers verified")
+        print(f"  [PASS] desktop_executor.py — class, denormalize, 12 handlers verified")
         passed += 1
     except Exception as e:
         print(f"  [FAIL] desktop_executor.py — {e}")
@@ -173,7 +137,6 @@ def test_live():
         from core.screenshot import capture_desktop_screenshot
         screenshot_bytes = capture_desktop_screenshot()
         assert len(screenshot_bytes) > 1000, "Screenshot too small — likely failed"
-        # Check PNG magic bytes
         assert screenshot_bytes[:4] == b'\x89PNG', "Not a valid PNG file"
         print(f"  [PASS] screenshot — captured {len(screenshot_bytes)} bytes")
         passed += 1
@@ -181,54 +144,21 @@ def test_live():
         print(f"  [FAIL] screenshot — {e}")
         failed += 1
 
-    # --- Test 2: System shortcut (open terminal) ---
-    try:
-        from core.freecad_functions import execute_system_shortcut
-        import time
-
-        result = execute_system_shortcut("open_terminal")
-        assert result.get("success"), f"Failed: {result}"
-        print(f"  [PASS] system_shortcut('open_terminal') — terminal should have opened")
-        time.sleep(2)
-
-        # Close it
-        result = execute_system_shortcut("close_window")
-        assert result.get("success"), f"Failed: {result}"
-        print(f"  [PASS] system_shortcut('close_window') — terminal should have closed")
-        passed += 2
-    except Exception as e:
-        print(f"  [FAIL] system shortcut — {e}")
-        failed += 1
-
-    # --- Test 3: Mouse click at center ---
+    # --- Test 2: Mouse click at center ---
     try:
         from core.freecad_functions import system_click
-        result = system_click(960, 540)
+        result = system_click(640, 400)
         assert result.get("success"), f"Failed: {result}"
-        print(f"  [PASS] system_click(960, 540) — clicked screen center")
+        print(f"  [PASS] system_click(640, 400) — clicked screen center")
         passed += 1
     except Exception as e:
         print(f"  [FAIL] system_click — {e}")
         failed += 1
 
-    # --- Test 4: FreeCAD shortcut (two-key sequence, safe to run even without FreeCAD) ---
-    try:
-        from core.freecad_functions import execute_freecad_shortcut
-
-        # This is just a keypress test — won't do anything harmful outside FreeCAD
-        result = execute_freecad_shortcut("edit_undo")
-        assert result.get("success"), f"Failed: {result}"
-        print(f"  [PASS] freecad_shortcut('edit_undo') — Ctrl+Z sent")
-        passed += 1
-    except Exception as e:
-        print(f"  [FAIL] freecad_shortcut — {e}")
-        failed += 1
-
-    # --- Test 5: Full executor with mock function calls ---
+    # --- Test 3: Full executor with mock function calls ---
     try:
         from core.desktop_executor import DesktopExecutor
 
-        # Create a mock function call object
         class MockFunctionCall:
             def __init__(self, name, args):
                 self.name = name

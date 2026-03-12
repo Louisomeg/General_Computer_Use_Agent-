@@ -77,7 +77,7 @@ class AgenticLoop:
     def __init__(
         self,
         client: Client,
-        model_name: str = "gemini-2.5-computer-use-preview-10-2025",
+        model_name: str = "gemini-3.1-pro-preview",
         system_instruction: Optional[str] = None,
         screenshot_fn: Optional[Callable[[], bytes]] = None,
         extra_declarations: Optional[List[types.FunctionDeclaration]] = None,
@@ -96,6 +96,8 @@ class AgenticLoop:
         # This lets agents pass filtered shortcut sets to reduce per-turn overhead.
         self.custom_declarations = custom_declarations
         self._turn_count = 0
+        self._empty_response_retries = 0
+        self._cached_config = self._build_config()
 
     @property
     def turn_count(self):
@@ -152,6 +154,7 @@ class AgenticLoop:
         This matches the pattern the model was trained on.
         """
         self._turn_count = 0  # Reset per call so each invocation gets a fresh budget
+        self._empty_response_retries = 0  # Reset retry counter for fresh run
 
         # ── Initial turn: prompt + screenshot ────────────────────────────
         screenshot_bytes = self.screenshot_fn()
@@ -179,9 +182,7 @@ class AgenticLoop:
             # screenshot instead of crashing.  This can happen transiently
             # due to content-safety filters or API hiccups.
             if not response.candidates:
-                self._empty_response_retries = getattr(
-                    self, "_empty_response_retries", 0
-                ) + 1
+                self._empty_response_retries += 1
                 if self._empty_response_retries >= 3:
                     termcolor.cprint(
                         "Empty response 3 times in a row — stopping.",
@@ -321,6 +322,11 @@ class AgenticLoop:
                 break
 
     def config(self):
+        """Return the cached GenerateContentConfig (identical across turns)."""
+        return self._cached_config
+
+    def _build_config(self):
+        """Build the GenerateContentConfig once at init time."""
         base = self.custom_declarations if self.custom_declarations is not None else get_custom_declarations()
         all_declarations = base + self.extra_declarations
         if self.use_browser_environment:
@@ -330,7 +336,12 @@ class AgenticLoop:
                 ),
             )
         else:
-            cu_tool = types.Tool(computer_use=types.ComputerUse())
+            cu_tool = types.Tool(computer_use=types.ComputerUse(
+                excluded_predefined_functions=[
+                    "navigate", "go_back", "go_forward",
+                    "search", "open_web_browser",
+                ],
+            ))
 
         return GenerateContentConfig(
             system_instruction=self.system_instruction,
@@ -340,6 +351,8 @@ class AgenticLoop:
             max_output_tokens=8192,
             tools=[cu_tool, types.Tool(function_declarations=all_declarations)],
             thinking_config=types.ThinkingConfig(include_thoughts=True),
+            # Ultra-high resolution required for computer use (2240 tokens/image).
+            media_resolution=types.MediaResolution.MEDIA_RESOLUTION_ULTRA_HIGH,
             # Disable AFC — we handle function calls manually in the agentic loop.
             # This suppresses the "Tools at indices [1] are not compatible with AFC" warning.
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
@@ -370,7 +383,8 @@ class AgenticLoop:
     def get_text(self, candidate: Candidate) -> Optional[str]:
         if not candidate.content or not candidate.content.parts:
             return None
-        text = [p.text for p in candidate.content.parts if p.text]
+        text = [p.text for p in candidate.content.parts
+                if p.text and not getattr(p, "thought", False)]
         return " ".join(text) or None
 
     def extract_function_calls(self, candidate: Candidate):

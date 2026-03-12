@@ -87,6 +87,8 @@ def load_skill(name: str) -> dict | None:
             return yaml.safe_load(f)
 
     # Check subdirectories
+    if not SKILLS_DIR.exists():
+        return None
     for sub in SKILLS_DIR.iterdir():
         if sub.is_dir():
             path = sub / f"{name}.yaml"

@@ -118,7 +118,7 @@ class Planner:
             prompt += f"\n\nUser: \"{user_request}\""
 
             response = self.client.models.generate_content(
-                model="gemini-3-flash-preview",
+                model="gemini-3.1-pro-preview",
                 contents=prompt,
             )
             return self._parse_plan(response.text, user_request)
