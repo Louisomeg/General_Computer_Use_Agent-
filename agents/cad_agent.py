@@ -438,32 +438,82 @@ class CADAgent:
 
     def _decompose_l_bracket(self, params: dict, description: str) -> list[dict]:
         """Decompose an L-bracket into base plate + wall + fillets."""
-        # Parse compound dimensions from params
         base_dims = None
         wall_dims = None
         fillet_r = 3.0  # default
 
+        # ── Strategy 1: Extract NxNxN patterns from the task DESCRIPTION ──
+        # This is the most reliable source since the planner may rename params
+        # inconsistently (e.g. base_length/base_width/base_thickness vs base_dimensions).
+        dim_matches = re.findall(r'(\d+)x(\d+)x(\d+)', description)
+        if len(dim_matches) >= 2:
+            d1 = [float(x) for x in dim_matches[0]]
+            d2 = [float(x) for x in dim_matches[1]]
+            base_dims = {'w': d1[0], 'h': d1[1], 'd': d1[2]}
+            wall_dims = {'w': d2[0], 'h': d2[1], 'd': d2[2]}
+
+        # ── Strategy 2: Compound param values (e.g. base_dimensions: '60x40x5mm') ──
+        if not base_dims or not wall_dims:
+            for key, val in params.items():
+                val_str = str(val)
+                key_lower = key.lower()
+                # Only match values containing 'x' (compound dims like 60x40x5mm)
+                if 'x' in val_str and re.search(r'\d+x\d+', val_str):
+                    if any(k in key_lower for k in ("base", "plate", "bottom", "floor")):
+                        base_dims = base_dims or self._parse_dim_string(val_str)
+                    elif any(k in key_lower for k in ("wall", "vertical", "upright", "side")):
+                        wall_dims = wall_dims or self._parse_dim_string(val_str)
+
+        # ── Strategy 3: Individual params (e.g. base_length: 60mm, base_width: 40mm) ──
+        if not base_dims:
+            bd = {}
+            for key, val in params.items():
+                key_lower = key.lower()
+                if not any(k in key_lower for k in ("base", "plate", "bottom", "floor")):
+                    continue
+                parsed = self._parse_mm(str(val))
+                if not parsed:
+                    continue
+                if any(s in key_lower for s in ("length", "len", "long")):
+                    bd['w'] = parsed
+                elif any(s in key_lower for s in ("width", "wid", "breadth")):
+                    bd['h'] = parsed
+                elif any(s in key_lower for s in ("thick", "depth", "height")):
+                    bd['d'] = parsed
+            if bd:
+                base_dims = bd
+
+        if not wall_dims:
+            wd = {}
+            for key, val in params.items():
+                key_lower = key.lower()
+                if not any(k in key_lower for k in ("wall", "vertical", "upright", "side")):
+                    continue
+                parsed = self._parse_mm(str(val))
+                if not parsed:
+                    continue
+                if any(s in key_lower for s in ("width", "wid", "breadth", "length", "len")):
+                    wd['w'] = parsed
+                elif any(s in key_lower for s in ("height", "tall", "high")):
+                    wd['h'] = parsed
+                elif any(s in key_lower for s in ("thick", "depth")):
+                    wd['d'] = parsed
+            if wd:
+                wall_dims = wd
+
+        # ── Extract fillet radius from params ──
         for key, val in params.items():
-            val_str = str(val).lower()
             key_lower = key.lower()
-            if any(k in key_lower for k in ("base", "plate", "bottom", "floor")):
-                base_dims = self._parse_dim_string(val_str)
-            elif any(k in key_lower for k in ("wall", "vertical", "upright", "side")):
-                wall_dims = self._parse_dim_string(val_str)
-            elif any(k in key_lower for k in ("fillet", "radius", "round")):
-                parsed = self._parse_mm(val_str)
+            if any(k in key_lower for k in ("fillet", "round")):
+                parsed = self._parse_mm(str(val))
                 if parsed > 0:
                     fillet_r = parsed
+        # Also try extracting from description
+        fillet_match = re.search(r'(\d+(?:\.\d+)?)\s*mm\s*fillet', description.lower())
+        if fillet_match:
+            fillet_r = float(fillet_match.group(1))
 
-        # Fallback: extract from description
-        if not base_dims or not wall_dims:
-            dim_matches = re.findall(r'(\d+)x(\d+)x(\d+)', description.lower())
-            if len(dim_matches) >= 2:
-                d1 = [float(x) for x in dim_matches[0]]
-                d2 = [float(x) for x in dim_matches[1]]
-                base_dims = base_dims or {'w': d1[0], 'h': d1[1], 'd': d1[2]}
-                wall_dims = wall_dims or {'w': d2[0], 'h': d2[1], 'd': d2[2]}
-
+        # ── Defaults ──
         if not base_dims:
             base_dims = {'w': 60, 'h': 40, 'd': 5}
         if not wall_dims:
@@ -762,14 +812,22 @@ class CADAgent:
         Each step runs as an independent agentic_loop() call with its own
         context and turn budget. FreeCAD state carries over between steps
         because the desktop persists.
+
+        If a step crashes (API error, etc.), remaining steps are skipped
+        because they depend on the previous step's FreeCAD state.
         """
         total = len(steps)
         print(f"[CAD Agent] Multi-feature task: {total} steps")
 
         for i, step in enumerate(steps):
             print(f"[CAD Agent] Step {i+1}/{total}: {step['title']}")
-            self.loop.agentic_loop(step["prompt"], self.executor)
-            print(f"[CAD Agent] Step {i+1}/{total} complete")
+            try:
+                self.loop.agentic_loop(step["prompt"], self.executor)
+                print(f"[CAD Agent] Step {i+1}/{total} complete")
+            except Exception as e:
+                print(f"[CAD Agent] Step {i+1}/{total} FAILED: {e}")
+                print(f"[CAD Agent] Aborting remaining {total - i - 1} steps")
+                raise
 
     # ------------------------------------------------------------------
     # Main entry point
