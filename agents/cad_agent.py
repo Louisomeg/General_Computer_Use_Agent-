@@ -12,6 +12,9 @@
 #   task = Task(description="Create an M10x30 hex bolt", params={...})
 #   result = agent.execute(task)
 
+import re
+import subprocess
+
 from google.genai import Client, types
 
 from agents.registry import register
@@ -175,7 +178,7 @@ class CADAgent:
         self.loop = AgenticLoop(
             client,
             system_instruction=CAD_SYSTEM_INSTRUCTION,   # base + CAD addendum
-            max_turns=25,
+            max_turns=40,
             extra_declarations=[TASK_COMPLETE_DECLARATION],
             custom_declarations=get_custom_declarations(),
         )
@@ -185,16 +188,197 @@ class CADAgent:
     def card(self) -> dict:
         return AGENT_CARD
 
+    def _prepare_freecad_environment(self):
+        """Clean up stale FreeCAD state before starting a task.
+
+        Removes crash recovery files that trigger the "Document Recovery"
+        dialog on startup, which wastes several agent turns every time.
+        """
+        recovery_paths = [
+            "~/.local/share/FreeCAD/recovery",   # FreeCAD 1.0+
+            "~/.FreeCAD/recovery",                # Older versions
+        ]
+        for path in recovery_paths:
+            subprocess.run(
+                ["bash", "-c", f"rm -rf {path}/* 2>/dev/null"],
+                capture_output=True,
+            )
+        print("[CAD Agent] Cleaned FreeCAD recovery files")
+
+    # ------------------------------------------------------------------
+    # Shape detection & geometry-specific instructions
+    # ------------------------------------------------------------------
+
+    def _detect_shape(self, task: Task) -> str:
+        """Detect the geometry type from task description and params."""
+        desc = task.description.lower()
+        params = task.params or {}
+
+        if any(w in desc for w in ("cylinder", "circle", "disc", "tube", "pipe")):
+            return "circle"
+        if any(k in params for k in ("diameter", "radius")):
+            return "circle"
+        if any(w in desc for w in ("hex", "polygon")):
+            return "polygon"
+        if "across_flats" in params or "sides" in params:
+            return "polygon"
+        return "rectangle"
+
+    def _parse_mm(self, value: str) -> float:
+        """Parse a dimension string like '40mm' or '40 mm' to a float."""
+        match = re.match(r'(\d+(?:\.\d+)?)', str(value))
+        return float(match.group(1)) if match else 0.0
+
+    def _get_pad_value(self, params: dict) -> str:
+        """Extract the pad/extrude depth from params."""
+        for key in ("height", "depth", "thickness"):
+            if key in params:
+                val = self._parse_mm(params[key])
+                if val > 0:
+                    return f"{val:g} mm"
+        return "10 mm"
+
+    def _get_constraint_values(self, shape: str, params: dict) -> dict:
+        """Extract constraint values based on shape type and params."""
+        if shape == "circle":
+            diameter = 0
+            for key in ("diameter", "dia"):
+                if key in params:
+                    diameter = self._parse_mm(params[key])
+            if not diameter:
+                for key in ("radius", "rad"):
+                    if key in params:
+                        diameter = self._parse_mm(params[key]) * 2
+            radius = diameter / 2 if diameter else 20
+            return {"radius": f"{radius:g} mm", "diameter": f"{diameter:g} mm"}
+
+        elif shape == "polygon":
+            across_flats = 0
+            if "across_flats" in params:
+                across_flats = self._parse_mm(params["across_flats"])
+            sides = 6  # default hexagon
+            if "sides" in params:
+                sides = int(self._parse_mm(params["sides"]))
+            return {"across_flats": f"{across_flats:g} mm", "sides": str(sides)}
+
+        else:  # rectangle
+            width = height = 0
+            for key in ("length", "width", "x"):
+                if key in params and not width:
+                    width = self._parse_mm(params[key])
+            for key in ("width", "breadth", "y"):
+                if key in params and not height:
+                    val = self._parse_mm(params[key])
+                    if val != width:
+                        height = val
+            if not height:
+                # Fallback: use second dimension found
+                dims = [self._parse_mm(v) for v in params.values()
+                        if re.match(r'\d', str(v))]
+                if len(dims) >= 2:
+                    width, height = dims[0], dims[1]
+            return {
+                "width": f"{width:g} mm" if width else "50 mm",
+                "height": f"{height:g} mm" if height else "30 mm",
+            }
+
+    def _build_geometry_step(self, shape: str, params: dict) -> str:
+        """Build step 6 (draw geometry + constrain) for the detected shape."""
+        cv = self._get_constraint_values(shape, params)
+
+        if shape == "circle":
+            return (
+                "6. Draw a circle and constrain its size:\n"
+                "   a. Activate the circle tool via the MENU:\n"
+                "      Click \"Sketch\" in the MENU BAR at the top of the window.\n"
+                "      Hover over \"Sketcher geometries\" (a submenu arrow appears).\n"
+                "      In the submenu, click \"Circle\" (it may be called \"Create circle by center\").\n"
+                "      If the submenu doesn't appear, try clicking \"Sketcher geometries\" instead.\n"
+                "   b. Click the CENTER of the circle at the ORIGIN POINT in the viewport.\n"
+                "      The origin is where the red X-axis and green Y-axis lines cross.\n"
+                "      Placing the center at the origin is ideal for circular profiles.\n"
+                "   c. Click a SECOND point away from the center to set an approximate radius.\n"
+                "      Click roughly 50-80 pixels away from the center — the exact size\n"
+                "      does not matter, we will constrain it in the next step.\n"
+                "   d. Press key_combination(\"escape\") to exit the circle tool.\n"
+                "   e. Now constrain the radius:\n"
+                "      Click on the CIRCLE EDGE (the curved line itself, NOT the center point).\n"
+                "      Then activate the constraint via the MENU:\n"
+                "      Click \"Sketch\" in the MENU BAR → hover \"Sketcher constraints\" →\n"
+                "      click \"Constrain radius / diameter\" (or just \"Constrain radius\"\n"
+                "      in some FreeCAD versions).\n"
+                "      A dialog appears with a number input field.\n"
+                f"      Type the RADIUS value with units: \"{cv['radius']}\"\n"
+                f"      (This is the radius — half of the {cv['diameter']} diameter).\n"
+                "      Click the \"OK\" button in the dialog.\n"
+                f"   Verify: the circle should resize to exactly {cv['diameter']} diameter.\n\n"
+            )
+
+        elif shape == "polygon":
+            return (
+                "6. Draw a regular polygon and constrain its size:\n"
+                "   a. Activate the polygon tool via the MENU:\n"
+                "      Click \"Sketch\" in the MENU BAR at the top of the window.\n"
+                "      Hover over \"Sketcher geometries\" (a submenu arrow appears).\n"
+                "      In the submenu, click \"Regular polygon\".\n"
+                "   b. A panel may appear in the Tasks area (left side) asking for the\n"
+                f"      number of sides. Set it to {cv['sides']} (for a hexagon).\n"
+                "   c. Click the CENTER at the ORIGIN POINT in the viewport.\n"
+                "   d. Click a SECOND point to set the initial size (~50 pixels away).\n"
+                "   e. Press key_combination(\"escape\") to exit the polygon tool.\n"
+                "   f. Constrain the across-flats dimension:\n"
+                "      Click on one FLAT EDGE of the polygon (not a vertex).\n"
+                "      Then: \"Sketch\" menu → \"Sketcher constraints\" → \"Constrain distance\".\n"
+                f"      Type \"{cv['across_flats']}\" in the dialog, then click OK.\n"
+                "   Verify: the polygon should resize to the specified dimensions.\n\n"
+            )
+
+        else:  # rectangle
+            return (
+                "6. Draw the rectangle (TWO clicks, then add constraints):\n"
+                "   a. Activate the rectangle tool via the MENU:\n"
+                "      Click the \"Sketch\" text in the MENU BAR at the top of the window.\n"
+                "      In the dropdown, hover over \"Sketcher geometries\" (a submenu arrow appears).\n"
+                "      In the submenu that opens to the right, click \"Rectangle\".\n"
+                "      If the submenu does not appear, try clicking \"Sketcher geometries\" instead.\n"
+                "   b. Click the FIRST corner in the upper-left area of the viewport.\n"
+                "      Look at the screenshot — place the click ABOVE and LEFT of the center\n"
+                "      origin where the red and green axis lines cross. Stay away from those lines.\n"
+                "   c. Click the SECOND corner, offset down-right from the first click.\n"
+                "      This creates an approximate rectangle. Exact size does not matter yet.\n"
+                "   d. Press key_combination(\"escape\") to exit the rectangle tool.\n"
+                "   e. Now add a WIDTH constraint:\n"
+                "      Click on one HORIZONTAL edge of the rectangle (click at the midpoint\n"
+                "      of the line, not near a corner).\n"
+                "      Then activate the distance constraint via the MENU:\n"
+                "      Click \"Sketch\" in the MENU BAR → hover over \"Sketcher constraints\" →\n"
+                "      click \"Constrain distance\" in the submenu.\n"
+                "      A dimension dialog appears with a number input field.\n"
+                "      IMPORTANT — UNIT HANDLING: Always type the number WITH the unit.\n"
+                f"      Type \"{cv['width']}\" (with the space before mm).\n"
+                "      FreeCAD may display a different default unit (like µm), so always\n"
+                "      include \" mm\" after the number to ensure millimeters.\n"
+                "      After typing, click the \"OK\" button in the dialog (do NOT press Enter).\n"
+                "   f. Add a HEIGHT constraint:\n"
+                "      Click on one VERTICAL edge of the rectangle.\n"
+                "      Then activate the distance constraint via the MENU again:\n"
+                "      Click \"Sketch\" → hover \"Sketcher constraints\" → click \"Constrain distance\".\n"
+                f"      Type \"{cv['height']}\" with unit, then click OK.\n"
+                "   Verify: the rectangle should resize to the exact dimensions.\n\n"
+            )
+
     def execute(self, task: Task) -> Task:
         """Execute a CAD design task.
 
         The agent will:
-        1. Check if a YAML skill exists for the task
-        2. If yes — decompose using the skill steps
-        3. If no — build a detailed prompt and let the agentic loop handle it
+        1. Clean up FreeCAD environment (recovery files)
+        2. Check if a YAML skill exists for the task
+        3. If yes — decompose using the skill steps
+        4. If no — build a detailed prompt and let the agentic loop handle it
         """
         task.status = TaskStatus.WORKING
         print(f"\n[CAD Agent] Starting task: {task.description}")
+        self._prepare_freecad_environment()
 
         try:
             # Check for a matching skill file
@@ -333,11 +517,8 @@ class CADAgent:
     def _build_prompt(self, task: Task) -> str:
         """Build a task prompt for the agentic loop (freeform mode).
 
-        Includes:
-        1. Task description and specifications
-        2. Tutorial reference material (tips, troubleshooting, workflow)
-        3. Step-by-step execution plan
-        4. Critical rules
+        Dynamically adapts step 6 (geometry) and step 8 (pad value) based on
+        the detected shape type (rectangle, circle, polygon).
 
         NOTE: CAD_SYSTEM_INSTRUCTION is the loop's system_instruction,
         so we only include the task-specific details here.
@@ -356,6 +537,12 @@ class CADAgent:
         reference = self._build_reference_from_tutorials()
         if reference:
             parts.append(reference)
+
+        # Detect shape type and build geometry-specific instructions
+        shape = self._detect_shape(task)
+        geometry_step = self._build_geometry_step(shape, task.params or {})
+        pad_value = self._get_pad_value(task.params or {})
+        print(f"[CAD Agent] Detected shape: {shape}, pad: {pad_value}")
 
         parts.append(
             "## Execution Plan\n"
@@ -403,48 +590,20 @@ class CADAgent:
             "   NOTE: While inside the sketcher, the menu bar will show a \"Sketch\" menu.\n"
             "   Use this menu for ALL sketcher operations (geometry, constraints, close).\n\n"
 
-            "6. Draw the rectangle (TWO clicks, then add constraints):\n"
-            "   a. Activate the rectangle tool via the MENU:\n"
-            "      Click the \"Sketch\" text in the MENU BAR at the top of the window.\n"
-            "      In the dropdown, hover over \"Sketcher geometries\" (a submenu arrow appears).\n"
-            "      In the submenu that opens to the right, click \"Rectangle\".\n"
-            "      If the submenu does not appear, try clicking \"Sketcher geometries\" instead.\n"
-            "   b. Click the FIRST corner in the upper-left area of the viewport.\n"
-            "      Look at the screenshot — place the click ABOVE and LEFT of the center\n"
-            "      origin where the red and green axis lines cross. Stay away from those lines.\n"
-            "   c. Click the SECOND corner, offset down-right from the first click.\n"
-            "      This creates an approximate rectangle. Exact size does not matter yet.\n"
-            "   d. Press key_combination(\"escape\") to exit the rectangle tool.\n"
-            "   e. Now add a WIDTH constraint:\n"
-            "      Click on one HORIZONTAL edge of the rectangle (click at the midpoint\n"
-            "      of the line, not near a corner).\n"
-            "      Then activate the distance constraint via the MENU:\n"
-            "      Click \"Sketch\" in the MENU BAR → hover over \"Sketcher constraints\" →\n"
-            "      click \"Constrain distance\" in the submenu.\n"
-            "      A dimension dialog appears with a number input field.\n"
-            "      IMPORTANT — UNIT HANDLING: Always type the number WITH the unit, e.g.\n"
-            "      type \"30 mm\" (with the space before mm), NOT just \"30\".\n"
-            "      FreeCAD may display a different default unit (like µm), so always\n"
-            "      include \" mm\" after the number to ensure millimeters.\n"
-            "      After typing, click the \"OK\" button in the dialog (do NOT press Enter).\n"
-            "   f. Add a HEIGHT constraint:\n"
-            "      Click on one VERTICAL edge of the rectangle.\n"
-            "      Then activate the distance constraint via the MENU again:\n"
-            "      Click \"Sketch\" → hover \"Sketcher constraints\" → click \"Constrain distance\".\n"
-            "      Type the height value with unit (e.g. \"30 mm\"), then click OK.\n"
-            "   Verify: the rectangle should resize to the exact dimensions.\n\n"
+            # ── Step 6: geometry-specific (rectangle, circle, or polygon) ──
+            + geometry_step +
 
             "7. Close the sketch:\n"
             "   Do NOT press Escape to close the sketch — Escape only cancels the active tool.\n"
             "   Instead: click the \"Sketch\" text in the MENU BAR, then click \"Close sketch\".\n"
             "   ALTERNATIVE: click the \"Close\" button in the Tasks panel (left side).\n"
             "   Verify: the menu bar should now show \"Part Design\" menus (not \"Sketch\" menus).\n"
-            "   You should see the rectangle outline in the 3D viewport.\n\n"
+            "   You should see the sketch outline in the 3D viewport.\n\n"
 
             "8. Pad (extrude) the sketch:\n"
             "   Click \"Part Design\" in the MENU BAR at the top, then click \"Pad\" in the dropdown.\n"
             "   A dialog will appear in the Tasks panel (left side) with a Length input field.\n"
-            "   Click the Length field, clear it, type the depth value WITH unit (e.g. \"30 mm\").\n"
+            f"   Click the Length field, clear it, type \"{pad_value}\" (WITH the unit).\n"
             "   Click OK to apply the pad.\n"
             "   Then zoom to fit: click \"View\" in the MENU BAR → click \"Standard views\" →\n"
             "   click \"Fit All\" to see the full 3D solid.\n"
@@ -456,7 +615,7 @@ class CADAgent:
             "- NEVER use the Delete key. Use Edit menu → Undo or key_combination(\"ctrl+z\").\n"
             "- Use the MENU BAR for ALL FreeCAD operations:\n"
             "  * Sketch menu → Sketcher geometries (for Rectangle, Line, Circle, etc.)\n"
-            "  * Sketch menu → Sketcher constraints (for Constrain distance, etc.)\n"
+            "  * Sketch menu → Sketcher constraints (for Constrain distance, Constrain radius, etc.)\n"
             "  * Sketch menu → Close sketch\n"
             "  * Part Design menu → Pad, Pocket, Create sketch, Create body\n"
             "  * View menu → Standard views → Fit All\n"
@@ -466,7 +625,8 @@ class CADAgent:
             "- Do NOT use keyboard shortcuts for geometry tools or constraints — use menus.\n"
             "- Close sketch via Sketch menu → Close sketch (NOT by pressing Escape).\n"
             "- If you trigger a wrong tool: Escape, then Undo multiple times.\n"
-            "- Draw shapes AWAY from the origin center to avoid axis selection problems.\n"
+            "- Draw shapes AWAY from the origin center to avoid axis selection problems\n"
+            "  (EXCEPTION: circles and polygons should be centered AT the origin).\n"
             "- If a step fails 3 times, call task_complete() with what went wrong."
         )
         return "\n".join(parts)

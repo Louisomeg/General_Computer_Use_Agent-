@@ -208,7 +208,8 @@ class AgenticLoop:
                         mime_type='image/png', data=screenshot_bytes
                     ),
                 ]))
-                continue  # Re-enter the while loop (counts as a new turn)
+                self._turn_count -= 1  # Don't count retries against the budget
+                continue
 
             # Reset empty-response counter on any successful response
             self._empty_response_retries = 0
@@ -238,6 +239,7 @@ class AgenticLoop:
                 history.append(types.Content(role='user', parts=[
                     types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes),
                 ]))
+                self._turn_count -= 1  # Don't count malformed retries against the budget
                 continue
 
             # No function calls → model is deliberating instead of acting.
@@ -263,6 +265,7 @@ class AgenticLoop:
                         mime_type='image/png', data=screenshot_bytes
                     ),
                 ]))
+                self._turn_count -= 1  # Don't count nudges against the budget
                 continue
 
             # Model took action — reset text-only counter
