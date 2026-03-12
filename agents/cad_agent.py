@@ -178,7 +178,7 @@ class CADAgent:
         self.loop = AgenticLoop(
             client,
             system_instruction=CAD_SYSTEM_INSTRUCTION,   # base + CAD addendum
-            max_turns=40,
+            max_turns=100,
             extra_declarations=[TASK_COMPLETE_DECLARATION],
             custom_declarations=get_custom_declarations(),
         )
