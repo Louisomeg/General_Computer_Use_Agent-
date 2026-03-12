@@ -36,8 +36,11 @@ DESCRIPTION: <clear task description for the agent>
 PARAMS: <key=value pairs, one per line, or NONE>
 
 Rules:
-- "cad" agent: anything about creating, designing, modeling 3D parts in FreeCAD
-- "research" agent: anything about finding information, specs, standards, looking things up
+- "cad" agent: anything involving the desktop — opening applications, creating/designing/modeling
+  3D parts in FreeCAD, clicking on things, interacting with the GUI, file management on the desktop
+- "research" agent: ONLY for finding information online — specs, standards, looking things up on the web
+- If the task can be done by interacting with the desktop, use "cad"
+- If the task requires browsing the internet for information, use "research"
 - DESCRIPTION should be a clear instruction the agent can act on
 - PARAMS should extract specific values (dimensions, materials, part names, etc.)
 
@@ -111,20 +114,28 @@ class Planner:
 
         return result
 
+    # Models to try for planning, in order.  Planning is text-only so any
+    # model works.  If the primary model has no quota (e.g. free tier), we
+    # automatically try the next one.
+    PLAN_MODELS = ["gemini-3.1-pro-preview", "gemini-2.5-flash-preview-04-17"]
+
     def _plan(self, user_request: str) -> tuple[str, str, dict]:
         """Use Gemini to decide agent + params. Falls back to parsing if API fails."""
-        try:
-            prompt = PLANNER_PROMPT.format(agents=", ".join(list_agents()))
-            prompt += f"\n\nUser: \"{user_request}\""
+        prompt = PLANNER_PROMPT.format(agents=", ".join(list_agents()))
+        prompt += f"\n\nUser: \"{user_request}\""
 
-            response = self.client.models.generate_content(
-                model="gemini-3.1-pro-preview",
-                contents=prompt,
-            )
-            return self._parse_plan(response.text, user_request)
-        except Exception as e:
-            print(f"  [Planner] LLM planning failed ({e}), using fallback")
-            return self._fallback_plan(user_request)
+        for model in self.PLAN_MODELS:
+            try:
+                response = self.client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                )
+                return self._parse_plan(response.text, user_request)
+            except Exception as e:
+                print(f"  [Planner] {model} failed ({e})")
+
+        print("  [Planner] All models failed, using keyword fallback")
+        return self._fallback_plan(user_request)
 
     def _parse_plan(self, text: str, original: str) -> tuple[str, str, dict]:
         """Parse the structured LLM response."""
@@ -166,11 +177,12 @@ class Planner:
     def _fallback_plan(self, request: str) -> tuple[str, str, dict]:
         """Simple keyword-based fallback if LLM fails."""
         lower = request.lower()
-        research_keywords = ["research", "find", "look up", "search", "what is", "what are",
-                             "dimensions", "specifications", "standard"]
+        research_keywords = ["research", "look up", "what is", "what are",
+                             "specifications", "standard", "how much", "how many"]
         if any(kw in lower for kw in research_keywords):
             return "research", request, {"max_turns": 20}
         else:
+            # Default to desktop agent — most tasks involve the GUI
             return "cad", request, {}
 
     def _build_agent_kwargs(self, agent_name: str) -> dict:

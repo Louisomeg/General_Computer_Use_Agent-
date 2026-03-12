@@ -251,10 +251,17 @@ class AgenticLoop:
             for fc in function_calls:
                 extra_fields = {}
 
-                # Check for safety_decision in function call args
-                if fc.args and fc.args.get("safety_decision"):
-                    safety = fc.args["safety_decision"]
-                    decision = self._handle_safety_decision(safety)
+                # Check for safety_decision in function call args.
+                # The API may use snake_case or camelCase depending on
+                # the transport layer, so check both.
+                safety = None
+                if fc.args:
+                    safety = (fc.args.get("safety_decision")
+                              or fc.args.get("safetyDecision"))
+                if safety:
+                    decision = self._handle_safety_decision(
+                        safety if isinstance(safety, dict) else {"decision": str(safety)}
+                    )
                     if decision == "TERMINATE":
                         print("Safety termination requested.")
                         should_stop = True
@@ -371,6 +378,11 @@ class AgenticLoop:
                 error_str = str(e)
                 if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                     termcolor.cprint("Rate limit (429). Stopping.", color="yellow")
+                    raise
+                # 400 INVALID_ARGUMENT is a permanent error (e.g. malformed
+                # history, missing safety_acknowledgement).  Retrying won't help.
+                if "400" in error_str and "INVALID_ARGUMENT" in error_str:
+                    termcolor.cprint(f"Permanent API error (400): {error_str[:200]}", color="red")
                     raise
                 print(e)
                 if attempt < max_retries - 1:

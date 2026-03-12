@@ -56,13 +56,13 @@ def test_logic():
         from core.custom_tools import get_custom_declarations
 
         declarations = get_custom_declarations()
-        assert len(declarations) == 3, f"Expected 3 declarations, got {len(declarations)}"
-
         names = [d.name for d in declarations]
+        # After shortcut removal, only GUI-action declarations remain:
+        # right_click_at, double_click_at, open_application
         expected_names = ["right_click_at", "double_click_at", "open_application"]
-        assert names == expected_names, f"Declaration names mismatch: {names}"
+        assert names == expected_names, f"Declaration names mismatch: expected {expected_names}, got {names}"
 
-        print(f"  [PASS] custom_tools.py — 3 declarations verified")
+        print(f"  [PASS] custom_tools.py — {len(declarations)} declarations: {names}")
         passed += 1
     except Exception as e:
         print(f"  [FAIL] custom_tools.py — {e}")

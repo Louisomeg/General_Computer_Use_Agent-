@@ -85,6 +85,9 @@ class DesktopExecutor(Executor):
         for fc in function_calls:
             function_name = fc.name
             args = dict(fc.args) if fc.args else {}
+            # Strip safety_decision — handled by the agentic loop, not here
+            args.pop("safety_decision", None)
+            args.pop("safetyDecision", None)
             print(f"  -> Executing: {function_name}({args})")
 
             try:

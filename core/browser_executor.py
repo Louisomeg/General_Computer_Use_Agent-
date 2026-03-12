@@ -100,8 +100,17 @@ class BrowserExecutor(Executor):
             name = fc.name
             args = dict(fc.args) if fc.args else {}
 
+            # Strip safety_decision from args before passing to handler —
+            # it's handled by the agentic loop, not the executor.
+            args.pop("safety_decision", None)
+            args.pop("safetyDecision", None)
+
+            # Predefined browser functions may arrive namespaced as
+            # "web_agent_api:navigate" etc.  Strip the prefix for lookup.
+            lookup_name = name.split(":")[-1] if ":" in name else name
+
             try:
-                handler = self._handlers().get(name)
+                handler = self._handlers().get(lookup_name)
                 if handler:
                     result = handler(args)
                 else:
