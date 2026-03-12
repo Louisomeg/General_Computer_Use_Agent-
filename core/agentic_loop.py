@@ -316,7 +316,7 @@ class AgenticLoop:
                 # FreeCAD is a heavy Qt application and needs time after actions
                 # (creating bodies, entering sketcher, opening dialogs) before
                 # the screen accurately reflects the new state.
-                time.sleep(1.0)
+                time.sleep(0.5)
                 # Capture screenshot AFTER executing all actions for this turn
                 screenshot_bytes = self.screenshot_fn()
                 response_parts.append(
@@ -376,12 +376,9 @@ class AgenticLoop:
 
         return GenerateContentConfig(
             system_instruction=self.system_instruction,
-            temperature=1,
-            top_p=0.95,
-            top_k=40,
-            max_output_tokens=8192,
+            temperature=0.3,
+            max_output_tokens=2048,
             tools=[cu_tool, types.Tool(function_declarations=all_declarations)],
-            thinking_config=types.ThinkingConfig(include_thoughts=True),
             # Highest available resolution for computer use screenshots.
             media_resolution=getattr(
                 types.MediaResolution, "MEDIA_RESOLUTION_ULTRA_HIGH",
