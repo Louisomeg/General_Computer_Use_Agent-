@@ -49,6 +49,8 @@ except ImportError:
     from docx.enum.table import WD_TABLE_ALIGNMENT
 
 
+from core.settings import DEFAULT_MODEL
+
 OUTPUT_DIR = Path("outputs/research_results")
 
 
@@ -146,7 +148,7 @@ and values. Mention the sources briefly. If confidence is low, note any gaps.
 Do NOT use markdown formatting. Just plain text paragraphs."""
 
             resp = self.client.models.generate_content(
-                model="gemini-3.1-pro-preview",
+                model=DEFAULT_MODEL,
                 contents=prompt
             )
             print("[DocumentationAgent] Enhanced summary generated")

@@ -20,7 +20,7 @@ from google.genai.types import Candidate, GenerateContentConfig
 from core.custom_tools import get_custom_declarations
 from core.executor import Executor
 from core.screenshot import capture_desktop_screenshot
-from core.settings import SYSTEM_INSTRUCTION
+from core.settings import DEFAULT_MODEL, SYSTEM_INSTRUCTION
 
 # Keep only the N most recent screenshots in conversation history.
 # Older screenshots are stripped to save context window space.
@@ -77,7 +77,7 @@ class AgenticLoop:
     def __init__(
         self,
         client: Client,
-        model_name: str = "gemini-3.1-pro-preview",
+        model_name: str = DEFAULT_MODEL,
         system_instruction: Optional[str] = None,
         screenshot_fn: Optional[Callable[[], bytes]] = None,
         extra_declarations: Optional[List[types.FunctionDeclaration]] = None,

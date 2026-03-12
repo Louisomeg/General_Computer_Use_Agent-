@@ -29,6 +29,7 @@ from agents.registry import register
 from core.agentic_loop import AgenticLoop, REPORT_FINDINGS_DECLARATION
 from core.browser_executor import BrowserExecutor
 from core.models import Task, TaskStatus
+from core.settings import DEFAULT_MODEL
 
 # documentation agent runs after us to make proper reports
 try:
@@ -38,11 +39,10 @@ except ImportError:
     HAS_DOC_AGENT = False
 
 
-# pro is the smart one, flash is the fast one.
-# we only hit pro once for planning cos its expensive.
-# flash does all the actual browsing.
-PLANNING_MODEL = "gemini-3.1-pro-preview"
-BROWSER_MODEL = "gemini-3.1-pro-preview"
+# both planning and browsing use the same model now.
+# keeping separate constants so we can split them later if needed.
+PLANNING_MODEL = DEFAULT_MODEL
+BROWSER_MODEL = DEFAULT_MODEL
 
 # this prompt took me ages to get right honestly. every line is here
 # cos without it the model does something stupid. like it would just

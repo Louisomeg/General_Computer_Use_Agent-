@@ -23,6 +23,9 @@ APP_LAUNCH_DELAY = 3.0          # Pause after launching an application
 SEARCH_TYPE_DELAY = 2.0         # Pause after typing in Ubuntu launcher
 CLICK_DELAY = 0.5               # Pause after a mouse click
 
+# Model configuration
+DEFAULT_MODEL = "gemini-3-flash-preview"
+
 # Screenshot
 SCREENSHOT_PATH = "/tmp/agent_screenshot.png"
 
