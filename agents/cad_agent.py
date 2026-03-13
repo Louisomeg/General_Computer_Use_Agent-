@@ -1308,37 +1308,18 @@ Example for a tube/pipe:
     def execute(self, task: Task) -> Task:
         """Execute a CAD design task.
 
-        Execution flow (plan-first):
-        1. Clean up FreeCAD environment (recovery files)
-        2. Build knowledge context from type:knowledge skills
-        3. Plan the task using text-only Gemini call (fast, cheap)
-        4. If planning succeeds → execute the plan step by step
-        5. If planning fails → fall back to legacy routing:
-           a. Check for matching YAML skill file
-           b. Check if task is multi-feature → decompose
-           c. Otherwise → freeform single prompt
+        Execution: clean FreeCAD state, then run one continuous agentic loop.
+        The model gets the task description + dimensions + tutorial reference
+        and drives FreeCAD using its vision to complete the design.
         """
         task.status = TaskStatus.WORKING
         print(f"\n[CAD Agent] Starting task: {task.description}")
         self._prepare_freecad_environment()
 
         try:
-            # ── Route: use the freeform path (single agentic_loop call) ──
-            # The freeform path handles setup + geometry + pad in one continuous
-            # loop where the model can see its own previous actions.  This is
-            # simpler and more reliable than the multi-step planning path.
-            # Planning is reserved for complex multi-feature parts only.
-            if self._is_multi_feature(task):
-                steps = self._decompose_task(task)
-                if steps:
-                    print(f"[CAD Agent] Route: MULTI-FEATURE — {len(steps)} steps")
-                    self._execute_multi_feature(task, steps)
-                else:
-                    print(f"[CAD Agent] Route: FREEFORM (decomposition empty)")
-                    self._execute_freeform(task)
-            else:
-                print(f"[CAD Agent] Route: FREEFORM")
-                self._execute_freeform(task)
+            # Simple: pass the task to the agentic loop. One continuous
+            # conversation where the model can see its own previous actions.
+            self._execute_freeform(task)
 
             task.complete(result="Design completed successfully")
             print(f"[CAD Agent] Task completed: {task.id}")
@@ -1422,14 +1403,8 @@ Example for a tube/pipe:
         self.state = None
 
     def _execute_freeform(self, task: Task):
-        """Execute a task with no matching skill — pure prompt-driven.
-
-        Tutorial skills (type: tutorial) are always loaded and injected as
-        reference material so the model knows how FreeCAD works even for
-        tasks that don't match a specific skill by name.
-        """
+        """Execute a task: pass the prompt to the agentic loop and let the model work."""
         prompt = self._build_prompt(task)
-        print(f"[CAD Agent] No exact skill match, running freeform design with tutorial reference")
         status = self.loop.agentic_loop(prompt, self.executor)
         if status in ("api_error", "empty_responses", "max_turns", "no_actions"):
             raise RuntimeError(f"Freeform execution failed with status: {status}")
@@ -1493,23 +1468,14 @@ Example for a tube/pipe:
     # ------------------------------------------------------------------
 
     def _build_prompt(self, task: Task) -> str:
-        """Build a concise task prompt for the agentic loop (freeform mode).
+        """Build a minimal prompt: task + params + tutorial reference.
 
-        Keeps the prompt SHORT and goal-oriented. The system instruction
-        (CAD_SYSTEM_INSTRUCTION) already teaches the model how to navigate
-        FreeCAD's menus, draw geometry, and apply constraints.  Repeating
-        click-by-click instructions here creates a rigid script that
-        breaks as soon as the UI deviates from the expected layout.
+        The system instruction already teaches FreeCAD navigation.
+        The tutorial skills provide general CAD knowledge as reference.
+        The model is a vision agent — let it reason and adapt.
         """
-        # Detect shape type and extract key values
-        shape = self._detect_shape(task)
-        pad_value = self._get_pad_value(task.params or {})
-        cv = self._get_constraint_values(shape, task.params or {})
-        print(f"[CAD Agent] Detected shape: {shape}, pad: {pad_value}")
-
         parts = [f"## Task\n{task.description}\n"]
 
-        # Specifications
         if task.params:
             parts.append("## Dimensions")
             for key, value in task.params.items():
@@ -1517,60 +1483,11 @@ Example for a tube/pipe:
                 parts.append(f"- {label}: {value}")
             parts.append("")
 
-        # Short, goal-oriented workflow
-        parts.append("## Workflow (high-level)")
-        parts.append("1. Minimize the terminal window (right-click taskbar → Minimize).")
-        parts.append("2. Open FreeCAD (Applications → Graphics → FreeCAD) or focus it if already open.")
-        parts.append("3. File → New to get a clean document.")
-        parts.append("4. Switch to Part Design workbench if needed (workbench dropdown).")
-        parts.append("5. Part Design menu → Create body.")
-        parts.append("6. Part Design menu → Create sketch → select XY_Plane → OK.")
+        # Tutorial reference (tips, troubleshooting from YAML skills)
+        reference = self._build_reference_from_tutorials()
+        if reference:
+            parts.append(reference)
 
-        # Shape-specific drawing goal (what, not how)
-        if shape == "tube":
-            parts.append(
-                f"7. Draw the tube profile: TWO circles, both centered at the origin.\n"
-                f"   - Outer circle: constrain radius to {cv['outer_radius']}\n"
-                f"   - Inner circle: constrain radius to {cv['inner_radius']}\n"
-                f"   Draw one circle at a time. After drawing each circle, press Escape\n"
-                f"   to exit the tool, select the circle edge, then constrain its radius."
-            )
-        elif shape == "circle":
-            parts.append(
-                f"7. Draw ONE circle centered at the origin.\n"
-                f"   Constrain its radius to {cv.get('radius', cv.get('diameter', '?'))}."
-            )
-        elif shape == "rectangle":
-            parts.append(
-                f"7. Draw a rectangle AWAY from the origin (upper-left area).\n"
-                f"   Constrain width to {cv.get('width', '?')} and height to {cv.get('height', '?')}."
-            )
-        elif shape == "polygon":
-            parts.append(
-                f"7. Draw a regular polygon at the origin.\n"
-                f"   Constrain its size appropriately."
-            )
-        else:
-            parts.append("7. Draw the required geometry in the sketch and constrain dimensions.")
-
-        parts.append("8. Sketch menu → Close sketch.")
-        parts.append(f"9. Part Design menu → Pad → set length to {pad_value} → OK.")
-        parts.append("10. View menu → Standard views → Fit All to see the result.")
-        parts.append("11. Call task_complete() with a summary.\n")
-
-        # Key reminders (compact, not click-by-click)
-        parts.append(
-            "## Key Reminders\n"
-            "- Use MENU BAR for everything (Sketch menu, Part Design menu, etc.).\n"
-            "- Geometry tools: Sketch menu → Sketcher geometries → choose tool.\n"
-            "- Constraints: Sketch menu → Sketcher constraints → choose constraint.\n"
-            "- Type values WITH units, e.g. \"20 mm\" (FreeCAD may default to µm otherwise).\n"
-            "- Escape cancels the active tool. Ctrl+Z undoes mistakes.\n"
-            "- Sketch menu → Close sketch (do NOT use Escape to close a sketch).\n"
-            "- If you leave a sketch by accident, double-click \"Sketch\" in the model tree to re-enter.\n"
-            "- If a dialog/button doesn't respond after 2 tries, try pressing Enter or clicking elsewhere first.\n"
-            "- NEVER use the Delete key. Use Edit → Undo instead."
-        )
         return "\n".join(parts)
 
     def _build_step_prompt(self, step: dict, params: dict,
