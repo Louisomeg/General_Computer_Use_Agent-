@@ -199,18 +199,9 @@ class CADAgent:
     def _prepare_freecad_environment(self):
         """Clean up stale FreeCAD state before starting a task.
 
-        - Kills any running FreeCAD to ensure a fresh start
-        - Removes crash recovery files that trigger the "Document Recovery"
-          dialog on startup
+        Removes crash recovery files that trigger the "Document Recovery"
+        dialog on startup, which wastes several agent turns every time.
         """
-        # Kill any running FreeCAD — ensures clean state for each task
-        subprocess.run(
-            ["bash", "-c", "pkill -f freecad 2>/dev/null || true"],
-            capture_output=True,
-        )
-        import time as _time
-        _time.sleep(1)  # Let the process die
-
         recovery_paths = [
             "~/.local/share/FreeCAD/recovery",   # FreeCAD 1.0+
             "~/.FreeCAD/recovery",                # Older versions
@@ -220,7 +211,7 @@ class CADAgent:
                 ["bash", "-c", f"rm -rf {path}/* 2>/dev/null"],
                 capture_output=True,
             )
-        print("[CAD Agent] Cleaned FreeCAD recovery files and killed stale instances")
+        print("[CAD Agent] Cleaned FreeCAD recovery files")
 
     # ------------------------------------------------------------------
     # Knowledge context — loads type:knowledge skills into compact text
@@ -605,7 +596,13 @@ Example for a tube/pipe:
         desc = task.description.lower()
         params = task.params or {}
 
-        if any(w in desc for w in ("cylinder", "circle", "disc", "tube", "pipe")):
+        # Tube/pipe: two concentric circles (has both inner and outer diameter)
+        has_inner = any(k in params for k in ("inner_diameter", "inner_radius"))
+        is_tube_word = any(w in desc for w in ("tube", "pipe", "bushing", "washer", "ring"))
+        if has_inner or is_tube_word:
+            return "tube"
+
+        if any(w in desc for w in ("cylinder", "circle", "disc")):
             return "circle"
         if any(k in params for k in ("diameter", "radius")):
             return "circle"
@@ -631,7 +628,30 @@ Example for a tube/pipe:
 
     def _get_constraint_values(self, shape: str, params: dict) -> dict:
         """Extract constraint values based on shape type and params."""
-        if shape == "circle":
+        if shape == "tube":
+            # Tube: outer and inner diameters
+            outer_d = 0
+            for key in ("outer_diameter", "diameter", "od"):
+                if key in params:
+                    outer_d = self._parse_mm(params[key])
+                    break
+            inner_d = 0
+            for key in ("inner_diameter", "id", "bore"):
+                if key in params:
+                    inner_d = self._parse_mm(params[key])
+                    break
+            if not outer_d:
+                outer_d = 40
+            if not inner_d:
+                inner_d = outer_d * 0.75
+            return {
+                "outer_radius": f"{outer_d / 2:g} mm",
+                "inner_radius": f"{inner_d / 2:g} mm",
+                "outer_diameter": f"{outer_d:g} mm",
+                "inner_diameter": f"{inner_d:g} mm",
+            }
+
+        elif shape == "circle":
             diameter = 0
             for key in ("diameter", "dia"):
                 if key in params:
@@ -676,6 +696,35 @@ Example for a tube/pipe:
     def _build_geometry_step(self, shape: str, params: dict) -> str:
         """Build step 6 (draw geometry + constrain) for the detected shape."""
         cv = self._get_constraint_values(shape, params)
+
+        if shape == "tube":
+            return (
+                "6. Draw TWO concentric circles for the tube profile:\n"
+                "   OUTER CIRCLE:\n"
+                "   a. Activate the circle tool via the MENU:\n"
+                "      Click \"Sketch\" in the MENU BAR → hover \"Sketcher geometries\" → click \"Circle\".\n"
+                "   b. Click the CENTER at the ORIGIN POINT (where red and green axis lines cross).\n"
+                "   c. Click a SECOND point away from center (approximate size, will constrain later).\n"
+                "   d. Press key_combination(\"escape\") to exit the circle tool.\n"
+                "   e. Constrain the outer radius:\n"
+                "      Click on the CIRCLE EDGE (the curved line, NOT center).\n"
+                "      \"Sketch\" menu → \"Sketcher constraints\" → \"Constrain radius\".\n"
+                f"      Type \"{cv['outer_radius']}\" in the dialog, click OK.\n"
+                f"      (Radius = half of {cv['outer_diameter']} outer diameter)\n\n"
+                "   INNER CIRCLE:\n"
+                "   f. Activate the circle tool AGAIN:\n"
+                "      \"Sketch\" menu → \"Sketcher geometries\" → \"Circle\".\n"
+                "   g. Click the CENTER at the SAME ORIGIN POINT as the outer circle.\n"
+                "   h. Click a SECOND point CLOSER to center than the outer circle.\n"
+                "   i. Press key_combination(\"escape\") to exit the circle tool.\n"
+                "   j. Constrain the inner radius:\n"
+                "      Click on the INNER circle edge (the smaller circle).\n"
+                "      \"Sketch\" menu → \"Sketcher constraints\" → \"Constrain radius\".\n"
+                f"      Type \"{cv['inner_radius']}\" in the dialog, click OK.\n"
+                f"      (Radius = half of {cv['inner_diameter']} inner diameter)\n\n"
+                "   Verify: you should see TWO concentric circles. The outer one is larger.\n"
+                "   Both circles share the same center at the origin.\n\n"
+            )
 
         if shape == "circle":
             return (
@@ -1279,22 +1328,22 @@ Example for a tube/pipe:
         self._prepare_freecad_environment()
 
         try:
-            # ── Step 1: Build knowledge context ──
-            knowledge_context = self._build_knowledge_context()
-
-            # ── Step 2: Plan the task (text-only Gemini call) ──
-            plan_steps = []
-            if knowledge_context:
-                plan_steps = self._plan_task(task, knowledge_context)
-
-            if plan_steps:
-                # ── Step 3a: Execute the plan ──
-                print(f"[CAD Agent] Route: PLANNED — {len(plan_steps)} steps")
-                self._execute_plan(task, plan_steps)
+            # ── Route: use the freeform path (single agentic_loop call) ──
+            # The freeform path handles setup + geometry + pad in one continuous
+            # loop where the model can see its own previous actions.  This is
+            # simpler and more reliable than the multi-step planning path.
+            # Planning is reserved for complex multi-feature parts only.
+            if self._is_multi_feature(task):
+                steps = self._decompose_task(task)
+                if steps:
+                    print(f"[CAD Agent] Route: MULTI-FEATURE — {len(steps)} steps")
+                    self._execute_multi_feature(task, steps)
+                else:
+                    print(f"[CAD Agent] Route: FREEFORM (decomposition empty)")
+                    self._execute_freeform(task)
             else:
-                # ── Step 3b: Fallback to legacy routing ──
-                print(f"[CAD Agent] Planning produced no steps, falling back to legacy routing")
-                self._execute_legacy(task)
+                print(f"[CAD Agent] Route: FREEFORM")
+                self._execute_freeform(task)
 
             task.complete(result="Design completed successfully")
             print(f"[CAD Agent] Task completed: {task.id}")
@@ -1386,7 +1435,9 @@ Example for a tube/pipe:
         """
         prompt = self._build_prompt(task)
         print(f"[CAD Agent] No exact skill match, running freeform design with tutorial reference")
-        self.loop.agentic_loop(prompt, self.executor)
+        status = self.loop.agentic_loop(prompt, self.executor)
+        if status in ("api_error", "empty_responses"):
+            raise RuntimeError(f"Freeform execution failed with status: {status}")
 
     # ------------------------------------------------------------------
     # Tutorial reference builder
