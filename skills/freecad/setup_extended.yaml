@@ -1,0 +1,27 @@
+name: setup_extended
+type: knowledge
+category: setup
+description: Document organization and workbench management.
+operations:
+- name: install_workbench
+  description: Download and install community workbenches.
+  when_to_use: When you need specialized tools like the Fasteners workbench.
+  actions:
+  - what: Open Add-on manager
+    how: Tools menu → Add-on manager
+  - what: Install workbench
+    how: Search for 'Fastener', select it, and click 'Install'.
+    verify: A restart prompt appears.
+  tips:
+  - Always save your work before installing new workbenches, as FreeCAD requires a restart.
+- name: rename_object
+  description: Give features and bodies descriptive names.
+  when_to_use: To keep the Tree View organized, especially in complex models.
+  actions:
+  - what: Rename
+    how: Select object in Tree View and press 'F2'.
+    type_value: stem_base
+tips:
+- In the Fastener workbench, generating threads is computationally intensive; only enable 'Thread' if absolutely necessary
+  for visual rendering.
+- Group assembly components into folders in the Tree View using 'Right-click → Create Group' to keep the workspace clean.

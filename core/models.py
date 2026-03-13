@@ -123,3 +123,30 @@ def load_tutorial_skills() -> list[dict]:
             if skill and skill.get("type") == "tutorial":
                 tutorials.append(skill)
     return tutorials
+
+
+def load_knowledge_skills() -> list[dict]:
+    """Load all skills marked with type: knowledge.
+
+    Knowledge skills contain structured operational know-how — the agent's
+    repertoire of FreeCAD capabilities.  Each skill groups related operations
+    by category (setup, sketcher, part_design) with structured actions that
+    teach the agent HOW to perform each operation reliably.
+
+    Loaded at startup into the agent's context so it can compose operations
+    flexibly for any task, rather than following rigid scripts.
+    """
+    knowledge = []
+    if not SKILLS_DIR.exists():
+        return knowledge
+    for path in SKILLS_DIR.rglob("*.yaml"):
+        try:
+            with open(path) as f:
+                # Use safe_load_all to handle multi-document YAML files
+                for doc in yaml.safe_load_all(f):
+                    if doc and isinstance(doc, dict) and doc.get("type") == "knowledge":
+                        knowledge.append(doc)
+        except yaml.YAMLError:
+            # Skip files that fail to parse
+            continue
+    return knowledge

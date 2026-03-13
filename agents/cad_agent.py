@@ -21,8 +21,8 @@ from agents.registry import register
 from core.agentic_loop import AgenticLoop
 from core.custom_tools import get_custom_declarations
 from core.executor import Executor
-from core.models import Task, TaskStatus, ProcedureState, load_skill, load_tutorial_skills
-from core.settings import SYSTEM_INSTRUCTION
+from core.models import Task, TaskStatus, ProcedureState, load_skill, load_tutorial_skills, load_knowledge_skills
+from core.settings import SYSTEM_INSTRUCTION, DEFAULT_MODEL
 
 
 # Agent Card — describes what this agent can do (A2A-style, kept in code)
@@ -204,6 +204,312 @@ class CADAgent:
                 capture_output=True,
             )
         print("[CAD Agent] Cleaned FreeCAD recovery files")
+
+    # ------------------------------------------------------------------
+    # Knowledge context — loads type:knowledge skills into compact text
+    # ------------------------------------------------------------------
+
+    def _build_knowledge_context(self) -> str:
+        """Compile all type:knowledge skills into a compact reference string.
+
+        Loaded once per task execution and injected into the planning prompt
+        so the model knows what operations are available and how to perform them.
+        The output is a concise listing of operations grouped by category.
+        """
+        skills = load_knowledge_skills()
+        if not skills:
+            return ""
+
+        parts = ["# Available FreeCAD Operations\n"]
+
+        for skill in skills:
+            category = skill.get("category", "unknown")
+            parts.append(f"## {category.replace('_', ' ').title()}")
+            if skill.get("description"):
+                parts.append(f"{skill['description'].strip()}\n")
+
+            for op in skill.get("operations", []):
+                name = op.get("name", "?")
+                desc = op.get("description", "")
+                when = op.get("when_to_use", "")
+                prereq = op.get("prerequisite", "")
+
+                parts.append(f"### {name}")
+                if desc:
+                    parts.append(f"  {desc}")
+                if when:
+                    parts.append(f"  Use when: {when}")
+                if prereq:
+                    parts.append(f"  Prerequisite: {prereq}")
+
+                # Compact action summary
+                actions = op.get("actions", [])
+                if actions:
+                    parts.append("  Steps:")
+                    for action in actions:
+                        what = action.get("what", "")
+                        how = action.get("how", "").strip().replace("\n", " ").replace("  ", " ")
+                        gotcha = action.get("gotcha", "")
+                        verify = action.get("verify", "")
+                        skip_if = action.get("skip_if", "")
+                        type_val = action.get("type_value", "")
+
+                        line = f"    - {what}: {how}"
+                        if type_val:
+                            line += f" [type: {type_val}]"
+                        if gotcha:
+                            line += f" !! {gotcha}"
+                        if verify:
+                            line += f" -> verify: {verify}"
+                        if skip_if:
+                            line += f" (skip if: {skip_if})"
+                        parts.append(line)
+
+                # Tips (compact)
+                tips = op.get("tips", [])
+                if tips:
+                    for tip in tips[:2]:  # limit to 2 tips per operation
+                        parts.append(f"  TIP: {tip}")
+
+                parts.append("")  # blank line between operations
+
+            # File-level tips (compact)
+            file_tips = skill.get("tips", [])
+            if file_tips:
+                parts.append(f"### General {category} tips")
+                for tip in file_tips[:3]:  # limit
+                    parts.append(f"  - {tip}")
+                parts.append("")
+
+        context = "\n".join(parts)
+        print(f"[CAD Agent] Knowledge context: {len(context)} chars from {len(skills)} skill files")
+        return context
+
+    # ------------------------------------------------------------------
+    # Planning phase — text-only LLM call to produce execution plan
+    # ------------------------------------------------------------------
+
+    PLANNING_PROMPT = """You are a FreeCAD CAD planning assistant. Given a task and your knowledge of
+available operations, create a step-by-step execution plan.
+
+## Task
+{task_description}
+
+## Parameters
+{task_params}
+
+## Available Operations
+{knowledge_context}
+
+## Rules
+- First step MUST include setup: minimize_terminal, launch_freecad, select_workbench, create_body
+- Each subsequent step should be ONE Part Design feature (create_sketch + draw geometry + constrain + close_sketch + pad/pocket/etc.)
+- Finishing operations (fillet, chamfer) are separate steps AFTER the main geometry
+- Use ONLY operation names from the Available Operations list above
+- Include specific dimensions from the task parameters
+- For multi-feature parts, each feature gets its own step
+- A step that creates geometry on an existing face must say "select the TOP FACE" first
+
+## Output Format
+Output a numbered list of steps. Each step has:
+- A short title after the number
+- The operations to perform (using names from Available Operations)
+- Specific dimensions and parameters
+
+Example:
+1. SETUP: minimize_terminal → launch_freecad → select_workbench → create_body
+2. BASE PLATE: create_sketch(XY_Plane) → draw_rectangle → constrain_distance(60mm width, 40mm height) → close_sketch → pad(5mm)
+3. VERTICAL WALL: create_sketch(top_face) → draw_rectangle → constrain_distance(40mm width, 5mm depth) → close_sketch → pad(30mm)
+4. FILLET: select_edge(inner_junction) → fillet(3mm)
+
+## Your plan:
+"""
+
+    def _plan_task(self, task: Task, knowledge_context: str) -> list[dict]:
+        """Ask Gemini to plan the execution steps for a task.
+
+        This is a text-only call (no screenshots) — fast and cheap.
+        Returns a list of step dicts with 'title' and 'operations' fields.
+        """
+        params_str = "\n".join(f"  {k}: {v}" for k, v in (task.params or {}).items()) or "  (none)"
+        prompt = self.PLANNING_PROMPT.format(
+            task_description=task.description,
+            task_params=params_str,
+            knowledge_context=knowledge_context,
+        )
+
+        try:
+            response = self.client.models.generate_content(
+                model=DEFAULT_MODEL,
+                contents=prompt,
+            )
+            plan_text = response.text
+            print(f"[CAD Agent] Planning response:\n{plan_text}\n")
+            return self._parse_plan(plan_text, task, knowledge_context)
+        except Exception as e:
+            print(f"[CAD Agent] Planning failed: {e}")
+            return []
+
+    def _parse_plan(self, plan_text: str, task: Task, knowledge_context: str) -> list[dict]:
+        """Parse the model's plan text into structured steps.
+
+        Each step becomes a dict with:
+          - title: short label (from the plan line)
+          - prompt: full execution prompt for one agentic_loop() call
+        """
+        steps = []
+        current_title = None
+        current_body_lines = []
+
+        for line in plan_text.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+
+            # Match numbered steps: "1. SETUP: ...", "2. BASE PLATE: ..."
+            import re as _re
+            step_match = _re.match(r'^(\d+)\.\s*(.+)', line)
+            if step_match:
+                # Save previous step
+                if current_title:
+                    steps.append({
+                        "title": current_title,
+                        "body": "\n".join(current_body_lines).strip(),
+                    })
+                current_title = step_match.group(2).strip()
+                current_body_lines = [current_title]
+            elif current_title:
+                current_body_lines.append(line)
+
+        # Save last step
+        if current_title:
+            steps.append({
+                "title": current_title,
+                "body": "\n".join(current_body_lines).strip(),
+            })
+
+        if not steps:
+            print("[CAD Agent] Plan parsing found no steps")
+            return []
+
+        # Convert parsed steps into execution prompts
+        reference = self._build_reference_from_tutorials()
+        execution_steps = []
+
+        for i, step in enumerate(steps):
+            is_first = (i == 0)
+            is_last = (i == len(steps) - 1)
+
+            prompt = self._build_plan_step_prompt(
+                step_title=step["title"],
+                step_body=step["body"],
+                step_num=i + 1,
+                total_steps=len(steps),
+                is_first=is_first,
+                is_last=is_last,
+                task=task,
+                knowledge_context=knowledge_context,
+                reference=reference,
+            )
+            execution_steps.append({
+                "title": step["title"],
+                "prompt": prompt,
+            })
+
+        print(f"[CAD Agent] Parsed plan: {len(execution_steps)} steps")
+        return execution_steps
+
+    def _build_plan_step_prompt(self, step_title: str, step_body: str,
+                                 step_num: int, total_steps: int,
+                                 is_first: bool, is_last: bool,
+                                 task: Task, knowledge_context: str,
+                                 reference: str) -> str:
+        """Build a full execution prompt for one step of the plan.
+
+        The prompt includes:
+        - What step this is and what the overall task is
+        - The specific operations for this step
+        - Relevant knowledge context (how to do each operation)
+        - Tutorial tips/troubleshooting
+        - Critical rules for FreeCAD interaction
+        """
+        parts = []
+
+        parts.append(f"## Task: {task.description}")
+        parts.append(f"## Step {step_num} of {total_steps}: {step_title}\n")
+
+        if is_first:
+            parts.append(
+                "This is the FIRST step. You need to set up the environment and create "
+                "the first feature from scratch.\n"
+            )
+        else:
+            parts.append(
+                "Previous steps have already been completed. The 3D model is visible "
+                "in FreeCAD. Continue from the current state.\n"
+            )
+
+        # The planned operations for this step
+        parts.append("## What to do in this step")
+        parts.append(step_body)
+        parts.append("")
+
+        # Include the full knowledge context so the model knows HOW to do each operation
+        parts.append("## Operation Reference (how to perform each operation)")
+        parts.append(knowledge_context)
+        parts.append("")
+
+        # Tutorial tips
+        if reference:
+            parts.append(reference)
+
+        # Completion instruction
+        if is_last:
+            parts.append(
+                "\nWhen done, call task_complete(summary=\"description of what was built\").\n"
+            )
+        else:
+            parts.append(
+                f"\nWhen done with this step, call task_complete(summary=\"Step {step_num} complete: {step_title}\").\n"
+            )
+
+        # Critical rules (always included)
+        parts.append(
+            "## CRITICAL RULES\n"
+            "- Use the MENU BAR for ALL FreeCAD operations — never click tiny toolbar icons.\n"
+            "- NEVER use the Delete key — use Edit menu → Undo or key_combination(\"ctrl+z\").\n"
+            "- Always type dimensions WITH \" mm\" units (e.g., \"30 mm\" not \"30\").\n"
+            "- Close sketch via Sketch menu → Close sketch (NOT by pressing Escape).\n"
+            "- Draw rectangles AWAY from the origin center (circles/polygons AT the origin).\n"
+            "- After each action, study the screenshot to confirm it worked before proceeding.\n"
+            "- If something fails 3 times, call task_complete() with what went wrong.\n"
+        )
+
+        return "\n".join(parts)
+
+    # ------------------------------------------------------------------
+    # Plan execution — runs each planned step through agentic_loop()
+    # ------------------------------------------------------------------
+
+    def _execute_plan(self, task: Task, steps: list[dict]):
+        """Execute a planned sequence of steps.
+
+        Each step runs as an independent agentic_loop() call.
+        FreeCAD state carries over between steps (desktop persists).
+        If a step fails, remaining steps are aborted.
+        """
+        total = len(steps)
+        print(f"[CAD Agent] Executing plan: {total} steps")
+
+        for i, step in enumerate(steps):
+            print(f"[CAD Agent] Plan step {i+1}/{total}: {step['title']}")
+            try:
+                self.loop.agentic_loop(step["prompt"], self.executor)
+                print(f"[CAD Agent] Plan step {i+1}/{total} complete")
+            except Exception as e:
+                print(f"[CAD Agent] Plan step {i+1}/{total} FAILED: {e}")
+                print(f"[CAD Agent] Aborting remaining {total - i - 1} plan steps")
+                raise
 
     # ------------------------------------------------------------------
     # Shape detection & geometry-specific instructions
@@ -861,36 +1167,37 @@ class CADAgent:
     def execute(self, task: Task) -> Task:
         """Execute a CAD design task.
 
-        The agent will:
+        Execution flow (plan-first):
         1. Clean up FreeCAD environment (recovery files)
-        2. Check if a YAML skill exists for the task
-        3. If yes — decompose using the skill steps
-        4. Check if the task is multi-feature (bracket, fillet, etc.)
-        5. If yes — decompose into sequential operations
-        6. Otherwise — build a single prompt and let the agentic loop handle it
+        2. Build knowledge context from type:knowledge skills
+        3. Plan the task using text-only Gemini call (fast, cheap)
+        4. If planning succeeds → execute the plan step by step
+        5. If planning fails → fall back to legacy routing:
+           a. Check for matching YAML skill file
+           b. Check if task is multi-feature → decompose
+           c. Otherwise → freeform single prompt
         """
         task.status = TaskStatus.WORKING
         print(f"\n[CAD Agent] Starting task: {task.description}")
         self._prepare_freecad_environment()
 
         try:
-            # Check for a matching skill file
-            skill = self._find_skill(task)
+            # ── Step 1: Build knowledge context ──
+            knowledge_context = self._build_knowledge_context()
 
-            if skill:
-                print(f"[CAD Agent] Route: SKILL — '{skill.get('name', '?')}'")
-                self._execute_skill(task, skill)
-            elif self._is_multi_feature(task):
-                steps = self._decompose_task(task)
-                if steps:
-                    print(f"[CAD Agent] Route: MULTI-FEATURE — {len(steps)} steps")
-                    self._execute_multi_feature(task, steps)
-                else:
-                    print(f"[CAD Agent] Route: FREEFORM (multi-feature detected but decomposition empty)")
-                    self._execute_freeform(task)
+            # ── Step 2: Plan the task (text-only Gemini call) ──
+            plan_steps = []
+            if knowledge_context:
+                plan_steps = self._plan_task(task, knowledge_context)
+
+            if plan_steps:
+                # ── Step 3a: Execute the plan ──
+                print(f"[CAD Agent] Route: PLANNED — {len(plan_steps)} steps")
+                self._execute_plan(task, plan_steps)
             else:
-                print(f"[CAD Agent] Route: FREEFORM (single-feature)")
-                self._execute_freeform(task)
+                # ── Step 3b: Fallback to legacy routing ──
+                print(f"[CAD Agent] Planning produced no steps, falling back to legacy routing")
+                self._execute_legacy(task)
 
             task.complete(result="Design completed successfully")
             print(f"[CAD Agent] Task completed: {task.id}")
@@ -900,6 +1207,31 @@ class CADAgent:
             print(f"[CAD Agent] Task failed: {e}")
 
         return task
+
+    def _execute_legacy(self, task: Task):
+        """Legacy execution routing — used as fallback when planning fails.
+
+        Preserved for backward compatibility:
+        1. Check for matching YAML skill file
+        2. Check for multi-feature decomposition
+        3. Fall back to freeform single prompt
+        """
+        skill = self._find_skill(task)
+
+        if skill:
+            print(f"[CAD Agent] Route: SKILL — '{skill.get('name', '?')}'")
+            self._execute_skill(task, skill)
+        elif self._is_multi_feature(task):
+            steps = self._decompose_task(task)
+            if steps:
+                print(f"[CAD Agent] Route: MULTI-FEATURE — {len(steps)} steps")
+                self._execute_multi_feature(task, steps)
+            else:
+                print(f"[CAD Agent] Route: FREEFORM (multi-feature detected but decomposition empty)")
+                self._execute_freeform(task)
+        else:
+            print(f"[CAD Agent] Route: FREEFORM (single-feature)")
+            self._execute_freeform(task)
 
     def _find_skill(self, task: Task) -> dict | None:
         """Try to find a YAML skill that matches the task."""

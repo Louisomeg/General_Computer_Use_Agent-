@@ -1,0 +1,47 @@
+name: part_design_parametric
+type: knowledge
+category: part_design
+description: Parametric modeling using variables, holes, and advanced body settings.
+operations:
+- name: create_varset
+  description: Create a container for parametric variables.
+  when_to_use: When you want to control multiple dimensions of a model from a single central list.
+  prerequisite: A Body must exist in the Part Design workbench.
+  actions:
+  - what: Add variable set
+    how: Part Design menu → Create a variable set
+    verify: A 'VarSet' object appears in the Tree View.
+  - what: Add variable
+    how: In the VarSet properties, right-click and add a new variable.
+    type_value: Enter a name like 'size' and a value like '55 mm'.
+- name: link_variable
+  description: Connect a dimension to a VarSet variable.
+  when_to_use: When a sketch dimension needs to update automatically based on a global parameter.
+  prerequisite: A VarSet with defined variables must exist.
+  actions:
+  - what: Open formula editor
+    how: Double click a dimension in a sketch, then click the 'FX' icon in the input box.
+  - what: Enter formula
+    how: Type the reference to the VarSet variable.
+    type_value: VarSet.size
+    gotcha: Always include units (e.g., ' + 20 mm') in the formula if performing math, or the operation will fail.
+    verify: The dimension value turns orange/brown in the sketch.
+- name: hole
+  description: Create standard counterbore, countersink, or simple holes.
+  when_to_use: When adding screw holes or bolt clearances to a solid.
+  prerequisite: Select a circular face or a point in a sketch.
+  actions:
+  - what: Create hole
+    how: Part Design menu → Hole
+  - what: Set parameters
+    how: In the task panel, set the diameter and depth.
+    type_value: 8 mm
+    verify: A hole feature appears concentric to the selected reference.
+- name: set_allow_compound
+  description: Allow a single Part Design Body to contain multiple disconnected solids.
+  when_to_use: When a pocket or cut operation splits a single part into two separate pieces (e.g., a clamp).
+  prerequisite: A Body must be selected in the Tree View.
+  actions:
+  - what: Enable compounds
+    how: Tree View → Select Body → Properties tab → Set 'Allow Compound' to 'True'.
+    gotcha: If this is False, 'through all' pockets that split a part will cause a feature error.

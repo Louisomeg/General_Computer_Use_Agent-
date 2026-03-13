@@ -1,0 +1,84 @@
+name: sketcher_advanced
+type: knowledge
+category: sketcher
+description: Advanced sketching tools including polylines, arcs, tangency, and construction geometry.
+operations:
+- name: draw_polyline
+  description: Draw a continuous sequence of line segments.
+  when_to_use: When you need to trace a complex perimeter quickly without starting a new line tool for every segment.
+  prerequisite: An active sketch must be open.
+  actions:
+  - what: Activate polyline tool
+    how: Sketch menu → Sketcher geometries → Create polyline
+    verify: The cursor shows the polyline icon.
+  - what: Draw segments
+    how: Click in the viewport to set the start point, then click sequentially for each corner.
+    verify: A continuous line follows the cursor.
+  - what: Finish polyline
+    how: Right-click or click the starting point to close the loop.
+  tips:
+  - FreeCAD automatically detects horizontal and vertical constraints while drawing; look for the red constraint icons near
+    the cursor.
+- name: draw_arc_center
+  description: Draw a circular arc by defining the center point first.
+  when_to_use: When an arc needs to be concentric with an existing circle or centered on a specific point.
+  prerequisite: An active sketch must be open.
+  actions:
+  - what: Activate arc tool
+    how: Sketch menu → Sketcher geometries → Create arc by center
+  - what: Define arc
+    how: Click to set the center point, click to set the radius and start of the arc, then move the cursor and click to set
+      the end point.
+    verify: A circular arc segment is created.
+- name: constrain_tangent
+  description: Force a curve and a line (or two curves) to meet smoothly.
+  when_to_use: When a transition between a straight line and a circle/arc must be seamless.
+  prerequisite: A line and an arc/circle must be selected in the sketch.
+  actions:
+  - what: Apply tangency
+    how: Sketch menu → Sketcher constraints → Constrain tangent
+    verify: A tan-colored constraint icon appearing at the intersection point.
+- name: constrain_coincident
+  description: Force two points to occupy the same coordinate.
+  when_to_use: When connecting endpoints of lines or attaching a point to a vertex.
+  prerequisite: Two points (vertices) must be selected.
+  actions:
+  - what: Apply coincidence
+    how: Sketch menu → Sketcher constraints → Constrain coincident
+    fallback: Press 'C' on the keyboard.
+- name: trim_edge
+  description: Cut a line or curve where it intersects with other geometry.
+  when_to_use: When removing unwanted segments of a circle or overlapping lines.
+  prerequisite: An active sketch with intersecting lines.
+  actions:
+  - what: Activate trim tool
+    how: Sketch menu → Sketcher geometries → Trim edge
+  - what: Trim segment
+    how: Click on the portion of the line you want to remove.
+    verify: The segment disappears up to the nearest intersection points.
+- name: section_view
+  description: Create a cross-section view of the model at the sketch plane.
+  when_to_use: When the 3D model is blocking the view of the sketch plane or you need to see internal geometry.
+  prerequisite: An active sketch must be open.
+  actions:
+  - what: Toggle section view
+    how: Sketch menu → View → Section view
+    verify: The 3D model is cut away, showing only what is behind the sketch plane.
+- name: construction_geometry
+  description: Convert sketch lines into non-rendering reference lines.
+  when_to_use: When you need lines for constraints or alignment that shouldn't be part of the final 3D shape.
+  prerequisite: A line or geometry segment must be selected.
+  actions:
+  - what: Toggle construction mode
+    how: Sketch menu → Sketcher geometries → Construction mode
+    fallback: Press 'G' then 'N' on the keyboard.
+    verify: The selected geometry turns blue.
+- name: draw_bspline
+  description: Create a smooth, organic curve using control points.
+  when_to_use: When modeling aerodynamic or ergonomic shapes that cannot be defined by simple arcs.
+  prerequisite: An active sketch must be open.
+  actions:
+  - what: Activate B-spline tool
+    how: Sketch menu → Sketcher geometries → Create B-spline
+  - what: Define spline
+    how: Click to set the start point, click for intermediate control points, and double-click or right-click to finish.
