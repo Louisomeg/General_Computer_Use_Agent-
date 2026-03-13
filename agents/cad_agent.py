@@ -1431,7 +1431,7 @@ Example for a tube/pipe:
         prompt = self._build_prompt(task)
         print(f"[CAD Agent] No exact skill match, running freeform design with tutorial reference")
         status = self.loop.agentic_loop(prompt, self.executor)
-        if status in ("api_error", "empty_responses"):
+        if status in ("api_error", "empty_responses", "max_turns", "no_actions"):
             raise RuntimeError(f"Freeform execution failed with status: {status}")
 
     # ------------------------------------------------------------------
@@ -1493,119 +1493,83 @@ Example for a tube/pipe:
     # ------------------------------------------------------------------
 
     def _build_prompt(self, task: Task) -> str:
-        """Build a task prompt for the agentic loop (freeform mode).
+        """Build a concise task prompt for the agentic loop (freeform mode).
 
-        Dynamically adapts step 6 (geometry) and step 8 (pad value) based on
-        the detected shape type (rectangle, circle, polygon).
-
-        NOTE: CAD_SYSTEM_INSTRUCTION is the loop's system_instruction,
-        so we only include the task-specific details here.
+        Keeps the prompt SHORT and goal-oriented. The system instruction
+        (CAD_SYSTEM_INSTRUCTION) already teaches the model how to navigate
+        FreeCAD's menus, draw geometry, and apply constraints.  Repeating
+        click-by-click instructions here creates a rigid script that
+        breaks as soon as the UI deviates from the expected layout.
         """
-        parts = [f"## Current Task\n{task.description}\n"]
+        # Detect shape type and extract key values
+        shape = self._detect_shape(task)
+        pad_value = self._get_pad_value(task.params or {})
+        cv = self._get_constraint_values(shape, task.params or {})
+        print(f"[CAD Agent] Detected shape: {shape}, pad: {pad_value}")
 
-        # Add measurements if provided
+        parts = [f"## Task\n{task.description}\n"]
+
+        # Specifications
         if task.params:
-            parts.append("## Specifications")
+            parts.append("## Dimensions")
             for key, value in task.params.items():
                 label = key.replace("_", " ").title()
                 parts.append(f"- {label}: {value}")
             parts.append("")
 
-        # Inject tutorial reference material (tips, troubleshooting, workflow)
-        reference = self._build_reference_from_tutorials()
-        if reference:
-            parts.append(reference)
+        # Short, goal-oriented workflow
+        parts.append("## Workflow (high-level)")
+        parts.append("1. Minimize the terminal window (right-click taskbar → Minimize).")
+        parts.append("2. Open FreeCAD (Applications → Graphics → FreeCAD) or focus it if already open.")
+        parts.append("3. File → New to get a clean document.")
+        parts.append("4. Switch to Part Design workbench if needed (workbench dropdown).")
+        parts.append("5. Part Design menu → Create body.")
+        parts.append("6. Part Design menu → Create sketch → select XY_Plane → OK.")
 
-        # Detect shape type and build geometry-specific instructions
-        shape = self._detect_shape(task)
-        geometry_step = self._build_geometry_step(shape, task.params or {})
-        pad_value = self._get_pad_value(task.params or {})
-        print(f"[CAD Agent] Detected shape: {shape}, pad: {pad_value}")
+        # Shape-specific drawing goal (what, not how)
+        if shape == "tube":
+            parts.append(
+                f"7. Draw the tube profile: TWO circles, both centered at the origin.\n"
+                f"   - Outer circle: constrain radius to {cv['outer_radius']}\n"
+                f"   - Inner circle: constrain radius to {cv['inner_radius']}\n"
+                f"   Draw one circle at a time. After drawing each circle, press Escape\n"
+                f"   to exit the tool, select the circle edge, then constrain its radius."
+            )
+        elif shape == "circle":
+            parts.append(
+                f"7. Draw ONE circle centered at the origin.\n"
+                f"   Constrain its radius to {cv.get('radius', cv.get('diameter', '?'))}."
+            )
+        elif shape == "rectangle":
+            parts.append(
+                f"7. Draw a rectangle AWAY from the origin (upper-left area).\n"
+                f"   Constrain width to {cv.get('width', '?')} and height to {cv.get('height', '?')}."
+            )
+        elif shape == "polygon":
+            parts.append(
+                f"7. Draw a regular polygon at the origin.\n"
+                f"   Constrain its size appropriately."
+            )
+        else:
+            parts.append("7. Draw the required geometry in the sketch and constrain dimensions.")
 
+        parts.append("8. Sketch menu → Close sketch.")
+        parts.append(f"9. Part Design menu → Pad → set length to {pad_value} → OK.")
+        parts.append("10. View menu → Standard views → Fit All to see the result.")
+        parts.append("11. Call task_complete() with a summary.\n")
+
+        # Key reminders (compact, not click-by-click)
         parts.append(
-            "## Execution Plan\n"
-            "Follow these steps IN ORDER. After each step, study the screenshot to confirm it worked.\n"
-            "If a step fails, read the PREREQUISITE CHECK before retrying.\n\n"
-
-            "1. Minimize the terminal: right-click the terminal in the TASKBAR and click\n"
-            "   \"Minimize\", or click the minimize button (—) in the terminal's title bar.\n\n"
-
-            "2. Check if FreeCAD is open.\n"
-            "   If YES: click on its window in the taskbar to bring it to focus.\n"
-            "     IMPORTANT: If FreeCAD already has a document open with existing work\n"
-            "     (you see shapes in the viewport or items in the model tree besides\n"
-            "     the default empty state), create a NEW document: click \"File\" in the\n"
-            "     MENU BAR → click \"New\". This gives you a clean start.\n"
-            "     Do NOT try to modify or interact with existing geometry.\n"
-            "   If NO: open it via the Applications menu → Graphics → FreeCAD.\n"
-            "     Then use wait_5_seconds to let it load.\n\n"
-
-            "3. Check if the Part Design workbench is active.\n"
-            "   PREREQUISITE CHECK: Look at the menu bar at the very top of the window.\n"
-            "   Do you see \"Part Design\" as one of the menu items (between other menus)?\n"
-            "   - If YES: the workbench is active, proceed to step 4.\n"
-            "   - If NO: you need to switch the workbench. Look for a DROPDOWN widget in\n"
-            "     the toolbar area (below the menu bar) that shows the current workbench name\n"
-            "     (it might say \"Start\" or something else). Click on that dropdown and select\n"
-            "     \"Part Design\" from the list. Then verify the menu bar now shows \"Part Design\".\n\n"
-
-            "4. Check if a Body already exists in the model tree (left panel).\n"
-            "   - If the model tree already shows \"Body\" and \"Origin\": skip to step 5.\n"
-            "   - If NOT: click the \"Part Design\" text in the MENU BAR (top of window),\n"
-            "     then click \"Create body\" in the dropdown menu.\n"
-            "     Verify: \"Body\" and \"Origin\" appear in the model tree.\n\n"
-
-            "5. Create a new sketch on the XY plane:\n"
-            "   PREREQUISITE CHECK: Is \"Body\" selected/highlighted in the model tree?\n"
-            "   If not, click on \"Body\" in the model tree first.\n"
-            "   Then: click the \"Part Design\" text in the MENU BAR at the top of the window.\n"
-            "   In the dropdown, look for \"Create sketch\" (NOT \"New Sketch\" — FreeCAD 1.0\n"
-            "   uses the name \"Create sketch\"). Click it.\n"
-            "   ALTERNATIVE: If you cannot find it in the Part Design menu, look in the\n"
-            "   Tasks panel (left side) under \"Helper tools\" for \"Create sketch\".\n"
-            "   When the plane selector dialog appears, click \"XY_Plane\" then click OK.\n"
-            "   Verify: you should see the sketcher grid with red/green axis lines.\n"
-            "   NOTE: While inside the sketcher, the menu bar will show a \"Sketch\" menu.\n"
-            "   Use this menu for ALL sketcher operations (geometry, constraints, close).\n\n"
-
-            # ── Step 6: geometry-specific (rectangle, circle, or polygon) ──
-            + geometry_step +
-
-            "7. Close the sketch:\n"
-            "   Do NOT press Escape to close the sketch — Escape only cancels the active tool.\n"
-            "   Instead: click the \"Sketch\" text in the MENU BAR, then click \"Close sketch\".\n"
-            "   ALTERNATIVE: click the \"Close\" button in the Tasks panel (left side).\n"
-            "   Verify: the menu bar should now show \"Part Design\" menus (not \"Sketch\" menus).\n"
-            "   You should see the sketch outline in the 3D viewport.\n\n"
-
-            "8. Pad (extrude) the sketch:\n"
-            "   Click \"Part Design\" in the MENU BAR at the top, then click \"Pad\" in the dropdown.\n"
-            "   A dialog will appear in the Tasks panel (left side) with a Length input field.\n"
-            f"   Click the Length field, clear it, type \"{pad_value}\" (WITH the unit).\n"
-            "   Click OK to apply the pad.\n"
-            "   Then zoom to fit: click \"View\" in the MENU BAR → click \"Standard views\" →\n"
-            "   click \"Fit All\" to see the full 3D solid.\n"
-            "   Verify: you should see a 3D solid in the viewport.\n\n"
-
-            "9. Call task_complete() with a summary of what was built.\n\n"
-
-            "CRITICAL RULES:\n"
-            "- NEVER use the Delete key. Use Edit menu → Undo or key_combination(\"ctrl+z\").\n"
-            "- Use the MENU BAR for ALL FreeCAD operations:\n"
-            "  * Sketch menu → Sketcher geometries (for Rectangle, Line, Circle, etc.)\n"
-            "  * Sketch menu → Sketcher constraints (for Constrain distance, Constrain radius, etc.)\n"
-            "  * Sketch menu → Close sketch\n"
-            "  * Part Design menu → Pad, Pocket, Create sketch, Create body\n"
-            "  * View menu → Standard views → Fit All\n"
-            "  * File menu → New, Save, Save As, Export\n"
-            "  * Edit menu → Undo, Redo\n"
-            "- The ONLY keyboard actions: Escape (cancel tool), Ctrl+Z (undo), typing in dialogs.\n"
-            "- Do NOT use keyboard shortcuts for geometry tools or constraints — use menus.\n"
-            "- Close sketch via Sketch menu → Close sketch (NOT by pressing Escape).\n"
-            "- If you trigger a wrong tool: Escape, then Undo multiple times.\n"
-            "- Draw shapes AWAY from the origin center to avoid axis selection problems\n"
-            "  (EXCEPTION: circles and polygons should be centered AT the origin).\n"
-            "- If a step fails 3 times, call task_complete() with what went wrong."
+            "## Key Reminders\n"
+            "- Use MENU BAR for everything (Sketch menu, Part Design menu, etc.).\n"
+            "- Geometry tools: Sketch menu → Sketcher geometries → choose tool.\n"
+            "- Constraints: Sketch menu → Sketcher constraints → choose constraint.\n"
+            "- Type values WITH units, e.g. \"20 mm\" (FreeCAD may default to µm otherwise).\n"
+            "- Escape cancels the active tool. Ctrl+Z undoes mistakes.\n"
+            "- Sketch menu → Close sketch (do NOT use Escape to close a sketch).\n"
+            "- If you leave a sketch by accident, double-click \"Sketch\" in the model tree to re-enter.\n"
+            "- If a dialog/button doesn't respond after 2 tries, try pressing Enter or clicking elsewhere first.\n"
+            "- NEVER use the Delete key. Use Edit → Undo instead."
         )
         return "\n".join(parts)
 
