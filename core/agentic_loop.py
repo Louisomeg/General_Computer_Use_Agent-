@@ -145,17 +145,25 @@ class AgenticLoop:
 
     # ── Main loop ────────────────────────────────────────────────────────
 
-    def agentic_loop(self, prompt: str, executor: Executor):
+    def agentic_loop(self, prompt: str, executor: Executor) -> str:
         """Run the agentic loop: screenshot → model → execute → repeat.
 
         Screenshot delivery follows Google's reference implementation:
         1. Initial screenshot is bundled WITH the prompt
         2. Subsequent screenshots are bundled WITH function responses
         This matches the pattern the model was trained on.
+
+        Returns:
+            "completed" — task_complete() was called by the model
+            "max_turns" — ran out of turns
+            "api_error" — permanent API error (400, 429, etc.)
+            "empty_responses" — model returned no candidates 3x
+            "no_actions" — model refused to act after 3 nudges
         """
         self._turn_count = 0  # Reset per call so each invocation gets a fresh budget
         self._empty_response_retries = 0  # Reset retry counter for fresh run
         self._text_only_retries = 0  # Counts turns where model talks but takes no action
+        self._recent_actions = []  # Track recent actions for repetition detection
 
         # ── Initial turn: prompt + screenshot ────────────────────────────
         screenshot_bytes = self.screenshot_fn()
@@ -166,10 +174,13 @@ class AgenticLoop:
             ])
         ]
 
+        exit_status = "completed"
+
         while True:
             self._turn_count += 1
             if self.max_turns > 0 and self._turn_count > self.max_turns:
                 termcolor.cprint(f"Max turns ({self.max_turns}) reached.", color="yellow")
+                exit_status = "max_turns"
                 break
 
             # ── Get model response ───────────────────────────────────────
@@ -177,6 +188,7 @@ class AgenticLoop:
                 response = self.get_model_response(history)
             except Exception as e:
                 print(e)
+                exit_status = "api_error"
                 break
 
             # Handle empty responses (no candidates) — retry with a fresh
@@ -189,6 +201,7 @@ class AgenticLoop:
                         "Empty response 3 times in a row — stopping.",
                         color="red",
                     )
+                    exit_status = "empty_responses"
                     break
                 termcolor.cprint(
                     f"Response has no candidates (attempt "
@@ -248,6 +261,7 @@ class AgenticLoop:
                 self._text_only_retries += 1
                 if self._text_only_retries >= 3:
                     print(f"Agent Loop Complete (no actions after 3 nudges): {reasoning}")
+                    exit_status = "no_actions"
                     break
                 termcolor.cprint(
                     f"Text-only response ({self._text_only_retries}/3). "
@@ -353,7 +367,47 @@ class AgenticLoop:
 
             if should_stop:
                 termcolor.cprint("Task complete.", color="green")
+                exit_status = "completed"
                 break
+
+            # ── Repetitive action detection ───────────────────────────
+            # If the model keeps clicking the same coordinates 4+ times,
+            # it's stuck.  Inject a warning to break the loop.
+            for fc in function_calls:
+                if fc.name in ("click_at", "right_click_at", "hover_at") and fc.args:
+                    action_key = f"{fc.name}({fc.args.get('x')},{fc.args.get('y')})"
+                    self._recent_actions.append(action_key)
+
+            # Keep only the last 6 actions
+            self._recent_actions = self._recent_actions[-6:]
+            if len(self._recent_actions) >= 4:
+                last_4 = self._recent_actions[-4:]
+                if len(set(last_4)) == 1:
+                    stuck_action = last_4[0]
+                    termcolor.cprint(
+                        f"  [!] STUCK: Same action repeated 4x: {stuck_action}",
+                        color="red",
+                    )
+                    # Inject a warning into the conversation
+                    screenshot_bytes = self.screenshot_fn()
+                    history.append(types.Content(role='user', parts=[
+                        types.Part.from_text(
+                            text=(
+                                f"STOP! You have clicked the EXACT same location 4 times "
+                                f"({stuck_action}) and it is NOT working. "
+                                f"You MUST try a DIFFERENT approach:\n"
+                                f"1. Look at the screenshot carefully\n"
+                                f"2. Click a DIFFERENT location or use a DIFFERENT method\n"
+                                f"3. If you cannot make progress, call task_complete(summary='FAILED: stuck')"
+                            )
+                        ),
+                        types.Part.from_bytes(
+                            mime_type='image/png', data=screenshot_bytes
+                        ),
+                    ]))
+                    self._recent_actions.clear()  # Reset so we detect new loops
+
+        return exit_status
 
     def config(self):
         """Return the cached GenerateContentConfig (identical across turns)."""

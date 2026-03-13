@@ -199,9 +199,18 @@ class CADAgent:
     def _prepare_freecad_environment(self):
         """Clean up stale FreeCAD state before starting a task.
 
-        Removes crash recovery files that trigger the "Document Recovery"
-        dialog on startup, which wastes several agent turns every time.
+        - Kills any running FreeCAD to ensure a fresh start
+        - Removes crash recovery files that trigger the "Document Recovery"
+          dialog on startup
         """
+        # Kill any running FreeCAD — ensures clean state for each task
+        subprocess.run(
+            ["bash", "-c", "pkill -f freecad 2>/dev/null || true"],
+            capture_output=True,
+        )
+        import time as _time
+        _time.sleep(1)  # Let the process die
+
         recovery_paths = [
             "~/.local/share/FreeCAD/recovery",   # FreeCAD 1.0+
             "~/.FreeCAD/recovery",                # Older versions
@@ -211,7 +220,7 @@ class CADAgent:
                 ["bash", "-c", f"rm -rf {path}/* 2>/dev/null"],
                 capture_output=True,
             )
-        print("[CAD Agent] Cleaned FreeCAD recovery files")
+        print("[CAD Agent] Cleaned FreeCAD recovery files and killed stale instances")
 
     # ------------------------------------------------------------------
     # Knowledge context — loads type:knowledge skills into compact text
@@ -516,6 +525,8 @@ Example for a tube/pipe:
         # Include FOCUSED knowledge context — only operations used in this step
         relevant_ops = self._extract_relevant_operations(step_body, knowledge_context)
         if relevant_ops:
+            print(f"[CAD Agent]   Step context: {len(relevant_ops)} chars "
+                  f"(vs {len(knowledge_context)} full)")
             parts.append("## How to perform these operations")
             parts.append(relevant_ops)
             parts.append("")
@@ -565,8 +576,21 @@ Example for a tube/pipe:
         for i, step in enumerate(steps):
             print(f"[CAD Agent] Plan step {i+1}/{total}: {step['title']}")
             try:
-                self.step_loop.agentic_loop(step["prompt"], self.executor)
-                print(f"[CAD Agent] Plan step {i+1}/{total} complete")
+                status = self.step_loop.agentic_loop(step["prompt"], self.executor)
+                print(f"[CAD Agent] Plan step {i+1}/{total} finished (status: {status})")
+
+                # Abort on fatal step statuses
+                if status in ("api_error", "empty_responses"):
+                    remaining = total - i - 1
+                    if remaining > 0:
+                        print(f"[CAD Agent] Step ended with '{status}' — "
+                              f"aborting remaining {remaining} plan steps")
+                    raise RuntimeError(
+                        f"Plan step {i+1} ({step['title']}) failed with status: {status}"
+                    )
+
+            except RuntimeError:
+                raise  # Re-raise our own RuntimeError
             except Exception as e:
                 print(f"[CAD Agent] Plan step {i+1}/{total} FAILED: {e}")
                 print(f"[CAD Agent] Aborting remaining {total - i - 1} plan steps")
@@ -1214,8 +1238,20 @@ Example for a tube/pipe:
         for i, step in enumerate(steps):
             print(f"[CAD Agent] Step {i+1}/{total}: {step['title']}")
             try:
-                self.loop.agentic_loop(step["prompt"], self.executor)
-                print(f"[CAD Agent] Step {i+1}/{total} complete")
+                status = self.loop.agentic_loop(step["prompt"], self.executor)
+                print(f"[CAD Agent] Step {i+1}/{total} finished (status: {status})")
+
+                if status in ("api_error", "empty_responses"):
+                    remaining = total - i - 1
+                    if remaining > 0:
+                        print(f"[CAD Agent] Step ended with '{status}' — "
+                              f"aborting remaining {remaining} steps")
+                    raise RuntimeError(
+                        f"Step {i+1} ({step['title']}) failed with status: {status}"
+                    )
+
+            except RuntimeError:
+                raise
             except Exception as e:
                 print(f"[CAD Agent] Step {i+1}/{total} FAILED: {e}")
                 print(f"[CAD Agent] Aborting remaining {total - i - 1} steps")
