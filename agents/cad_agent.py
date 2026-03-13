@@ -178,7 +178,7 @@ class CADAgent:
         self.loop = AgenticLoop(
             client,
             system_instruction=CAD_SYSTEM_INSTRUCTION,   # base + CAD addendum
-            max_turns=50,
+            max_turns=70,
             extra_declarations=[TASK_COMPLETE_DECLARATION],
             custom_declarations=get_custom_declarations(),
         )
@@ -699,31 +699,26 @@ Example for a tube/pipe:
 
         if shape == "tube":
             return (
-                "6. Draw TWO concentric circles for the tube profile:\n"
-                "   OUTER CIRCLE:\n"
-                "   a. Activate the circle tool via the MENU:\n"
-                "      Click \"Sketch\" in the MENU BAR → hover \"Sketcher geometries\" → click \"Circle\".\n"
-                "   b. Click the CENTER at the ORIGIN POINT (where red and green axis lines cross).\n"
-                "   c. Click a SECOND point away from center (approximate size, will constrain later).\n"
-                "   d. Press key_combination(\"escape\") to exit the circle tool.\n"
-                "   e. Constrain the outer radius:\n"
-                "      Click on the CIRCLE EDGE (the curved line, NOT center).\n"
-                "      \"Sketch\" menu → \"Sketcher constraints\" → \"Constrain radius\".\n"
-                f"      Type \"{cv['outer_radius']}\" in the dialog, click OK.\n"
-                f"      (Radius = half of {cv['outer_diameter']} outer diameter)\n\n"
-                "   INNER CIRCLE:\n"
-                "   f. Activate the circle tool AGAIN:\n"
-                "      \"Sketch\" menu → \"Sketcher geometries\" → \"Circle\".\n"
-                "   g. Click the CENTER at the SAME ORIGIN POINT as the outer circle.\n"
-                "   h. Click a SECOND point CLOSER to center than the outer circle.\n"
-                "   i. Press key_combination(\"escape\") to exit the circle tool.\n"
-                "   j. Constrain the inner radius:\n"
-                "      Click on the INNER circle edge (the smaller circle).\n"
-                "      \"Sketch\" menu → \"Sketcher constraints\" → \"Constrain radius\".\n"
-                f"      Type \"{cv['inner_radius']}\" in the dialog, click OK.\n"
-                f"      (Radius = half of {cv['inner_diameter']} inner diameter)\n\n"
-                "   Verify: you should see TWO concentric circles. The outer one is larger.\n"
-                "   Both circles share the same center at the origin.\n\n"
+                "6. Draw TWO concentric circles for the tube profile.\n"
+                "   CRITICAL: Both circles MUST share the EXACT same center at the origin.\n"
+                "   Do ONE circle at a time: draw → escape → constrain → then next circle.\n\n"
+                "   STEP A — OUTER CIRCLE:\n"
+                "   a1. \"Sketch\" menu → \"Sketcher geometries\" → \"Circle\".\n"
+                "   a2. Click the ORIGIN (where red X-axis and green Y-axis cross) for center.\n"
+                "   a3. Click a point roughly 80 pixels to the right for the edge.\n"
+                "   a4. Press key_combination(\"escape\") to EXIT the circle tool.\n"
+                "   a5. Click on the OUTER circle EDGE (curved line, NOT center point).\n"
+                "   a6. \"Sketch\" menu → \"Sketcher constraints\" → \"Constrain radius\".\n"
+                f"   a7. Type \"{cv['outer_radius']}\" in the dialog, click OK.\n\n"
+                "   STEP B — INNER CIRCLE:\n"
+                "   b1. \"Sketch\" menu → \"Sketcher geometries\" → \"Circle\" (activate again).\n"
+                "   b2. Click the EXACT SAME ORIGIN POINT as the outer circle center.\n"
+                "   b3. Click a point roughly 40 pixels to the right (smaller than outer).\n"
+                "   b4. Press key_combination(\"escape\") to EXIT the circle tool.\n"
+                "   b5. Click on the INNER circle EDGE (the smaller circle).\n"
+                "   b6. \"Sketch\" menu → \"Sketcher constraints\" → \"Constrain radius\".\n"
+                f"   b7. Type \"{cv['inner_radius']}\" in the dialog, click OK.\n\n"
+                "   Result: TWO concentric circles, outer larger, both centered at origin.\n\n"
             )
 
         if shape == "circle":
