@@ -178,7 +178,15 @@ class CADAgent:
         self.loop = AgenticLoop(
             client,
             system_instruction=CAD_SYSTEM_INSTRUCTION,   # base + CAD addendum
-            max_turns=100,
+            max_turns=50,
+            extra_declarations=[TASK_COMPLETE_DECLARATION],
+            custom_declarations=get_custom_declarations(),
+        )
+        # Separate loop for plan steps — lower turn budget per step
+        self.step_loop = AgenticLoop(
+            client,
+            system_instruction=CAD_SYSTEM_INSTRUCTION,
+            max_turns=25,    # Each plan step gets 25 turns max (not 50)
             extra_declarations=[TASK_COMPLETE_DECLARATION],
             custom_declarations=get_custom_declarations(),
         )
@@ -304,11 +312,14 @@ available operations, create a step-by-step execution plan.
 ## Rules
 - First step MUST include setup: minimize_terminal, launch_freecad, select_workbench, create_body
 - Each subsequent step should be ONE Part Design feature (create_sketch + draw geometry + constrain + close_sketch + pad/pocket/etc.)
+- CRITICAL: Every sketch step MUST end with close_sketch BEFORE any pad/pocket/revolution
 - Finishing operations (fillet, chamfer) are separate steps AFTER the main geometry
 - Use ONLY operation names from the Available Operations list above
-- Include specific dimensions from the task parameters
+- Include specific dimensions from the task parameters with units (e.g., 40 mm)
 - For multi-feature parts, each feature gets its own step
 - A step that creates geometry on an existing face must say "select the TOP FACE" first
+- For circles: specify "draw_circle(at origin)" and "constrain_radius(20 mm)" — use RADIUS not diameter for constrain_radius
+- For tubes/pipes: draw TWO concentric circles in the SAME sketch, then close_sketch, then pad
 
 ## Output Format
 Output a numbered list of steps. Each step has:
@@ -316,11 +327,15 @@ Output a numbered list of steps. Each step has:
 - The operations to perform (using names from Available Operations)
 - Specific dimensions and parameters
 
-Example:
+Example for an L-bracket:
 1. SETUP: minimize_terminal → launch_freecad → select_workbench → create_body
-2. BASE PLATE: create_sketch(XY_Plane) → draw_rectangle → constrain_distance(60mm width, 40mm height) → close_sketch → pad(5mm)
-3. VERTICAL WALL: create_sketch(top_face) → draw_rectangle → constrain_distance(40mm width, 5mm depth) → close_sketch → pad(30mm)
-4. FILLET: select_edge(inner_junction) → fillet(3mm)
+2. BASE PLATE: create_sketch(XY_Plane) → draw_rectangle → constrain_distance(60 mm width, 40 mm height) → close_sketch → pad(5 mm)
+3. VERTICAL WALL: create_sketch(top_face) → draw_rectangle → constrain_distance(40 mm width, 5 mm depth) → close_sketch → pad(30 mm)
+4. FILLET: select_edge(inner_junction) → fillet(3 mm)
+
+Example for a tube/pipe:
+1. SETUP: minimize_terminal → launch_freecad → select_workbench → create_body
+2. TUBE PROFILE: create_sketch(XY_Plane) → draw_circle(at origin) → constrain_radius(20 mm) → draw_circle(at origin) → constrain_radius(15 mm) → close_sketch → pad(50 mm)
 
 ## Your plan:
 """
@@ -367,8 +382,7 @@ Example:
                 continue
 
             # Match numbered steps: "1. SETUP: ...", "2. BASE PLATE: ..."
-            import re as _re
-            step_match = _re.match(r'^(\d+)\.\s*(.+)', line)
+            step_match = re.match(r'^(\d+)\.\s*(.+)', line)
             if step_match:
                 # Save previous step
                 if current_title:
@@ -419,6 +433,51 @@ Example:
         print(f"[CAD Agent] Parsed plan: {len(execution_steps)} steps")
         return execution_steps
 
+    def _extract_relevant_operations(self, step_body: str, knowledge_context: str) -> str:
+        """Extract only the operations mentioned in the step from the full context.
+
+        Instead of injecting all 48 operations (32K chars) into every step prompt,
+        find the specific operations referenced in this step's body and include
+        only those.  Falls back to the full context if no matches found.
+        """
+        # Parse operation names from step body (e.g., "create_sketch", "draw_circle", "pad")
+        # The step body looks like: "create_sketch(XY_Plane) → draw_circle → constrain_diameter(40mm)"
+        step_lower = step_body.lower()
+        # Extract all known operation names from the knowledge context
+        relevant_sections = []
+        current_section = []
+        current_name = None
+
+        for line in knowledge_context.split("\n"):
+            if line.startswith("### "):
+                # Save previous section if relevant
+                if current_name and current_name.lower() in step_lower:
+                    relevant_sections.extend(current_section)
+                    relevant_sections.append("")
+                current_name = line[4:].strip()
+                current_section = [line]
+            elif line.startswith("## "):
+                # Category header — save previous section, keep category header
+                if current_name and current_name.lower() in step_lower:
+                    relevant_sections.extend(current_section)
+                    relevant_sections.append("")
+                current_name = None
+                current_section = [line]
+                relevant_sections.append(line)
+            else:
+                current_section.append(line)
+
+        # Save last section
+        if current_name and current_name.lower() in step_lower:
+            relevant_sections.extend(current_section)
+
+        if relevant_sections:
+            result = "\n".join(relevant_sections).strip()
+            return result
+
+        # Fallback: return full context (truncated)
+        return knowledge_context[:8000]
+
     def _build_plan_step_prompt(self, step_title: str, step_body: str,
                                  step_num: int, total_steps: int,
                                  is_first: bool, is_last: bool,
@@ -429,9 +488,9 @@ Example:
         The prompt includes:
         - What step this is and what the overall task is
         - The specific operations for this step
-        - Relevant knowledge context (how to do each operation)
-        - Tutorial tips/troubleshooting
+        - FOCUSED knowledge context (only operations used in this step)
         - Critical rules for FreeCAD interaction
+        - Strong verification and abort instructions
         """
         parts = []
 
@@ -454,14 +513,12 @@ Example:
         parts.append(step_body)
         parts.append("")
 
-        # Include the full knowledge context so the model knows HOW to do each operation
-        parts.append("## Operation Reference (how to perform each operation)")
-        parts.append(knowledge_context)
-        parts.append("")
-
-        # Tutorial tips
-        if reference:
-            parts.append(reference)
+        # Include FOCUSED knowledge context — only operations used in this step
+        relevant_ops = self._extract_relevant_operations(step_body, knowledge_context)
+        if relevant_ops:
+            parts.append("## How to perform these operations")
+            parts.append(relevant_ops)
+            parts.append("")
 
         # Completion instruction
         if is_last:
@@ -473,16 +530,20 @@ Example:
                 f"\nWhen done with this step, call task_complete(summary=\"Step {step_num} complete: {step_title}\").\n"
             )
 
-        # Critical rules (always included)
+        # Critical rules (always included) — stronger abort language
         parts.append(
             "## CRITICAL RULES\n"
             "- Use the MENU BAR for ALL FreeCAD operations — never click tiny toolbar icons.\n"
-            "- NEVER use the Delete key — use Edit menu → Undo or key_combination(\"ctrl+z\").\n"
+            "- NEVER use the Delete key — use Edit menu -> Undo or key_combination(\"ctrl+z\").\n"
             "- Always type dimensions WITH \" mm\" units (e.g., \"30 mm\" not \"30\").\n"
-            "- Close sketch via Sketch menu → Close sketch (NOT by pressing Escape).\n"
+            "- Close sketch via Sketch menu -> Close sketch (NOT by pressing Escape).\n"
             "- Draw rectangles AWAY from the origin center (circles/polygons AT the origin).\n"
-            "- After each action, study the screenshot to confirm it worked before proceeding.\n"
-            "- If something fails 3 times, call task_complete() with what went wrong.\n"
+            "- After each action, STUDY THE SCREENSHOT to confirm it worked before proceeding.\n"
+            "- ABORT RULE: If the SAME error message appears 3 times, STOP IMMEDIATELY.\n"
+            "  Do NOT keep trying. Call task_complete(summary=\"FAILED: [error message]\").\n"
+            "  This includes errors like 'Sub shape not found', 'Feature not found', etc.\n"
+            "- VERIFY after drawing geometry: Check the sketch shows the expected shapes.\n"
+            "  If the sketch appears empty, the geometry was not drawn — undo and retry.\n"
         )
 
         return "\n".join(parts)
@@ -494,9 +555,9 @@ Example:
     def _execute_plan(self, task: Task, steps: list[dict]):
         """Execute a planned sequence of steps.
 
-        Each step runs as an independent agentic_loop() call.
-        FreeCAD state carries over between steps (desktop persists).
-        If a step fails, remaining steps are aborted.
+        Each step runs as an independent agentic_loop() call with its own
+        turn budget (25 turns per step).  FreeCAD state carries over between
+        steps (desktop persists).  If a step fails, remaining steps are aborted.
         """
         total = len(steps)
         print(f"[CAD Agent] Executing plan: {total} steps")
@@ -504,7 +565,7 @@ Example:
         for i, step in enumerate(steps):
             print(f"[CAD Agent] Plan step {i+1}/{total}: {step['title']}")
             try:
-                self.loop.agentic_loop(step["prompt"], self.executor)
+                self.step_loop.agentic_loop(step["prompt"], self.executor)
                 print(f"[CAD Agent] Plan step {i+1}/{total} complete")
             except Exception as e:
                 print(f"[CAD Agent] Plan step {i+1}/{total} FAILED: {e}")
