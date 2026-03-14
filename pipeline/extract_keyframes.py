@@ -88,15 +88,31 @@ def extract_keyframes(
         history=500, varThreshold=16, detectShadows=False
     )
 
+    # Sample rate: skip frames for high-fps videos (60fps -> analyze every 6th)
+    sample_every = max(1, int(fps / 10))  # Target ~10 analysis frames per second
+
     # First pass: find candidate frames
     candidates = []
     frame_idx = 0
     last_keyframe_idx = -min_gap_frames  # Allow first frame
+    progress_interval = int(total_frames / 10)  # Log every ~10%
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
+
+        # Progress logging
+        if frame_idx > 0 and progress_interval > 0 and frame_idx % progress_interval == 0:
+            pct = frame_idx / total_frames * 100
+            print(f"[keyframes]   {pct:.0f}% ({frame_idx}/{total_frames} frames, "
+                  f"{len(candidates)} candidates so far)")
+
+        # Skip frames for performance (still feed to MOG2 to maintain model)
+        if frame_idx % sample_every != 0:
+            bg_sub.apply(frame, learningRate=0.01)
+            frame_idx += 1
+            continue
 
         # Apply MOG2
         fg_mask = bg_sub.apply(frame)

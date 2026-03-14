@@ -8,6 +8,7 @@
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -50,9 +51,9 @@ def download_video(url: str, output_dir: Path = None) -> dict:
         print(f"[crawl] Video already downloaded: {mp4_files[0].name}")
         return _build_result(video_id, video_dir)
 
-    # Download with yt-dlp
+    # Download with yt-dlp (use Python module invocation for cross-platform compat)
     cmd = [
-        "yt-dlp",
+        sys.executable, "-m", "yt_dlp",
         "--format", "bestvideo[height<=720]+bestaudio/best[height<=720]",
         "--merge-output-format", "mp4",
         "--write-auto-sub",
@@ -95,10 +96,10 @@ def _build_result(video_id: str, video_dir: Path) -> dict:
     info_files = list(video_dir.glob("*.info.json"))
     if info_files:
         try:
-            with open(info_files[0]) as f:
+            with open(info_files[0], encoding="utf-8") as f:
                 info = json.load(f)
             title = info.get("title", video_id)
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, UnicodeDecodeError):
             pass
 
     return {
