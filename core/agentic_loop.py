@@ -145,13 +145,23 @@ class AgenticLoop:
 
     # ── Main loop ────────────────────────────────────────────────────────
 
-    def agentic_loop(self, prompt: str, executor: Executor) -> str:
+    def agentic_loop(
+        self, prompt: str, executor: Executor, images: list[bytes] = None,
+    ) -> str:
         """Run the agentic loop: screenshot → model → execute → repeat.
 
         Screenshot delivery follows Google's reference implementation:
         1. Initial screenshot is bundled WITH the prompt
         2. Subsequent screenshots are bundled WITH function responses
         This matches the pattern the model was trained on.
+
+        Args:
+            prompt: Initial text prompt for the model.
+            executor: Desktop executor for running actions.
+            images: Optional demonstration screenshots to inject alongside
+                    the initial prompt. Placed between prompt text and live
+                    screenshot. Will be cleaned up by _clean_old_screenshots()
+                    after a few turns.
 
         Returns:
             "completed" — task_complete() was called by the model
@@ -165,14 +175,14 @@ class AgenticLoop:
         self._text_only_retries = 0  # Counts turns where model talks but takes no action
         self._recent_actions = []  # Track recent actions for repetition detection
 
-        # ── Initial turn: prompt + screenshot ────────────────────────────
+        # ── Initial turn: prompt + optional demo images + screenshot ───
         screenshot_bytes = self.screenshot_fn()
-        history = [
-            types.Content(role='user', parts=[
-                types.Part.from_text(text=prompt),
-                types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes),
-            ])
-        ]
+        parts = [types.Part.from_text(text=prompt)]
+        if images:
+            for img_bytes in images:
+                parts.append(types.Part.from_bytes(mime_type='image/png', data=img_bytes))
+        parts.append(types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes))
+        history = [types.Content(role='user', parts=parts)]
 
         exit_status = "completed"
 

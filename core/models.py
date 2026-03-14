@@ -150,3 +150,61 @@ def load_knowledge_skills() -> list[dict]:
             # Skip files that fail to parse
             continue
     return knowledge
+
+
+# ── Demonstration Skill Loader ──────────────────────────────────────────────
+# Reads visual demonstration skills from skills/freecad/demos/
+
+DEMOS_DIR = SKILLS_DIR / "demos"
+
+
+def load_demonstration_skill(name: str) -> dict | None:
+    """Load a demonstration skill by name.
+
+    Looks in skills/freecad/demos/{name}/skill.yaml.
+    Adds a '_dir' key with the absolute path to the skill directory,
+    so callers can resolve screenshot paths.
+    """
+    path = DEMOS_DIR / name / "skill.yaml"
+    if not path.exists():
+        return None
+    with open(path, encoding="utf-8") as f:
+        skill = yaml.safe_load(f)
+    if skill:
+        skill["_dir"] = str(path.parent)
+    return skill
+
+
+def load_demonstration_index() -> list[dict]:
+    """Load the demonstration index for retrieval.
+
+    Reads skills/freecad/demos/index.yaml which lists all available
+    demonstrations with descriptions and tags.
+
+    Falls back to scanning skill.yaml files if the index doesn't exist.
+    """
+    index_path = DEMOS_DIR / "index.yaml"
+    if index_path.exists():
+        with open(index_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            return data.get("skills", []) if data else []
+
+    # Fallback: scan directories
+    if not DEMOS_DIR.exists():
+        return []
+    results = []
+    for skill_dir in DEMOS_DIR.iterdir():
+        if skill_dir.is_dir():
+            skill_path = skill_dir / "skill.yaml"
+            if skill_path.exists():
+                with open(skill_path, encoding="utf-8") as f:
+                    skill = yaml.safe_load(f)
+                if skill:
+                    results.append({
+                        "name": skill.get("name", skill_dir.name),
+                        "description": skill.get("description", ""),
+                        "tags": skill.get("tags", []),
+                        "path": str(skill_path.relative_to(DEMOS_DIR)),
+                        "step_count": len(skill.get("steps", [])),
+                    })
+    return results

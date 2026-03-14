@@ -242,18 +242,21 @@ class CADAgent:
         return task
 
     def _execute_freeform(self, task: Task):
-        """Execute a task: pass the prompt to the agentic loop and let the model work."""
-        prompt = self._build_prompt(task)
-        status = self.loop.agentic_loop(prompt, self.executor)
+        """Execute a task: pass the prompt + demo images to the agentic loop."""
+        prompt, images = self._build_prompt(task)
+        status = self.loop.agentic_loop(prompt, self.executor, images=images)
         if status in ("api_error", "empty_responses", "max_turns", "no_actions"):
             raise RuntimeError(f"Freeform execution failed with status: {status}")
 
-    def _build_prompt(self, task: Task) -> str:
-        """Build a minimal prompt: task + params + tutorial reference.
+    def _build_prompt(self, task: Task) -> tuple[str, list[bytes]]:
+        """Build prompt text + optional demonstration images.
 
         The system instruction already teaches FreeCAD navigation.
         The tutorial skills provide general CAD knowledge as reference.
         The model is a vision agent — let it reason and adapt.
+
+        Returns:
+            (prompt_text, demo_images) where demo_images may be empty.
         """
         parts = [f"## Task\n{task.description}\n"]
 
@@ -264,12 +267,39 @@ class CADAgent:
                 parts.append(f"- {label}: {value}")
             parts.append("")
 
+        # Demonstration reference (visual examples from processed tutorials)
+        demo_images = []
+        demo_result = self._build_demo_reference(task)
+        if demo_result:
+            demo_text, demo_images = demo_result
+            parts.append(demo_text)
+
         # Tutorial reference (tips, troubleshooting from YAML skills)
         reference = self._build_reference_from_tutorials()
         if reference:
             parts.append(reference)
 
-        return "\n".join(parts)
+        return "\n".join(parts), demo_images
+
+    def _build_demo_reference(self, task: Task) -> tuple[str, list[bytes]] | None:
+        """Find and format a relevant demonstration for the task.
+
+        Returns (text_description, [screenshot_bytes]) or None.
+        """
+        from core.skill_retrieval import find_relevant_demo, get_demo_screenshots, format_demo_text
+
+        demo = find_relevant_demo(task.description, task.params)
+        if not demo:
+            return None
+
+        images = get_demo_screenshots(demo, max_screenshots=3)
+        if not images:
+            return None
+
+        text = format_demo_text(demo)
+        print(f"[CAD Agent] Loaded demonstration: {demo.get('name')} "
+              f"({len(images)} screenshots)")
+        return text, images
 
     def _build_reference_from_tutorials(self) -> str:
         """Build a compact FreeCAD reference section from tutorial-type skills.

@@ -1,0 +1,24 @@
+Create new body
+Create sketch on XY plane
+Create sketch on XZ plane
+Draw rectangle in sketcher
+Draw circle in sketcher
+Draw line in sketcher
+Constrain distance in sketcher
+Constrain horizontal distance
+Constrain vertical distance
+Close sketch
+Pad a sketch
+Create pocket
+Apply fillet to edge
+Apply chamfer to edge
+Create revolution
+Mirror feature
+Linear pattern
+Polar pattern
+Create groove
+Apply thickness shell
+Export as STEP file
+Export as STL file
+Use external geometry tool
+Use construction geometry
