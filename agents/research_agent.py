@@ -277,6 +277,7 @@ DONE WHEN:
                     extra_declarations=[REPORT_FINDINGS_DECLARATION],
                     max_turns=max_turns,
                     use_browser_environment=True,
+                    finish_function_name="report_findings",
                 )
                 loop.agentic_loop(full_prompt, browser)
                 self.findings = browser.research_findings
@@ -366,6 +367,7 @@ DONE WHEN:
                     extra_declarations=[REPORT_FINDINGS_DECLARATION],
                     max_turns=max_turns,
                     use_browser_environment=True,
+                    finish_function_name="report_findings",
                 )
                 loop.agentic_loop(prompt, browser)
 

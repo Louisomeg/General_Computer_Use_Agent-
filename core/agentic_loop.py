@@ -84,6 +84,7 @@ class AgenticLoop:
         max_turns: int = 0,
         use_browser_environment: bool = False,
         custom_declarations: Optional[List[types.FunctionDeclaration]] = None,
+        finish_function_name: str = "task_complete",
     ):
         self.client = client
         self.model_name = model_name
@@ -95,6 +96,7 @@ class AgenticLoop:
         # If custom_declarations is provided, it replaces get_custom_declarations().
         # This lets agents pass filtered shortcut sets to reduce per-turn overhead.
         self.custom_declarations = custom_declarations
+        self.finish_function_name = finish_function_name
         self._turn_count = 0
         self._empty_response_retries = 0
         self._cached_config = self._build_config()
@@ -129,7 +131,8 @@ class AgenticLoop:
         """Remove old screenshots from history, keeping only the most recent.
 
         Walks backward through history and strips inline_data (images) from
-        older turns to stay within context limits.
+        older turns to stay within context limits.  Also removes Content
+        objects left completely empty after stripping (prevents 400 errors).
         """
         screenshot_count = 0
         for content in reversed(history):
@@ -142,6 +145,9 @@ class AgenticLoop:
                             parts_to_remove.append(part)
                 for part in parts_to_remove:
                     content.parts.remove(part)
+
+        # Remove any Content objects left with empty parts lists
+        history[:] = [c for c in history if c.parts]
 
     # ── Main loop ────────────────────────────────────────────────────────
 
@@ -357,14 +363,14 @@ class AgenticLoop:
                         warning = (
                             f"WARNING: You have {remaining} turns left. "
                             f"Wrap up your current work and finish the task NOW. "
-                            f"Call task_complete() with a summary of what you accomplished. "
+                            f"Call {self.finish_function_name}() with your results. "
                             f"Do not start any new operations."
                         )
                         response_parts.append(types.Part.from_text(text=warning))
                         print(f"  [!] Turn warning injected: {remaining} turns left")
                     elif remaining == 0:
                         warning = (
-                            "FINAL TURN. You MUST call task_complete() right now. "
+                            f"FINAL TURN. You MUST call {self.finish_function_name}() right now. "
                             "Summarize what was accomplished and what failed."
                         )
                         response_parts.append(types.Part.from_text(text=warning))
