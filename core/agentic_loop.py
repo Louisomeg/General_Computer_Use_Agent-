@@ -371,41 +371,64 @@ class AgenticLoop:
                 break
 
             # ── Repetitive action detection ───────────────────────────
-            # If the model keeps clicking the same coordinates 4+ times,
-            # it's stuck.  Inject a warning to break the loop.
+            # Track ALL actions and detect stuck patterns:
+            #   - Same single action repeated 4x (e.g. clicking same spot)
+            #   - Same 2-action cycle repeated 3x (e.g. click + type loop)
             for fc in function_calls:
-                if fc.name in ("click_at", "right_click_at", "hover_at") and fc.args:
-                    action_key = f"{fc.name}({fc.args.get('x')},{fc.args.get('y')})"
+                if fc.args:
+                    if fc.name in ("click_at", "right_click_at", "hover_at"):
+                        action_key = f"{fc.name}({fc.args.get('x')},{fc.args.get('y')})"
+                    elif fc.name == "type_text":
+                        action_key = f"type({fc.args.get('text', '')[:20]})"
+                    elif fc.name == "key_combination":
+                        action_key = f"key({fc.args.get('keys', '')})"
+                    else:
+                        continue
                     self._recent_actions.append(action_key)
 
-            # Keep only the last 6 actions
-            self._recent_actions = self._recent_actions[-6:]
+            # Keep only the last 8 actions
+            self._recent_actions = self._recent_actions[-8:]
+
+            is_stuck = False
+            stuck_desc = ""
+
+            # Check: same single action 4x in a row
             if len(self._recent_actions) >= 4:
                 last_4 = self._recent_actions[-4:]
                 if len(set(last_4)) == 1:
-                    stuck_action = last_4[0]
-                    termcolor.cprint(
-                        f"  [!] STUCK: Same action repeated 4x: {stuck_action}",
-                        color="red",
-                    )
-                    # Inject a warning into the conversation
-                    screenshot_bytes = self.screenshot_fn()
-                    history.append(types.Content(role='user', parts=[
-                        types.Part.from_text(
-                            text=(
-                                f"STOP! You have clicked the EXACT same location 4 times "
-                                f"({stuck_action}) and it is NOT working. "
-                                f"You MUST try a DIFFERENT approach:\n"
-                                f"1. Look at the screenshot carefully\n"
-                                f"2. Click a DIFFERENT location or use a DIFFERENT method\n"
-                                f"3. If you cannot make progress, call task_complete(summary='FAILED: stuck')"
-                            )
-                        ),
-                        types.Part.from_bytes(
-                            mime_type='image/png', data=screenshot_bytes
-                        ),
-                    ]))
-                    self._recent_actions.clear()  # Reset so we detect new loops
+                    is_stuck = True
+                    stuck_desc = f"same action 4x: {last_4[0]}"
+
+            # Check: same 2-action cycle repeated 3x (6 actions = 3 cycles)
+            if not is_stuck and len(self._recent_actions) >= 6:
+                pair = tuple(self._recent_actions[-2:])
+                prev_pairs = [
+                    tuple(self._recent_actions[-4:-2]),
+                    tuple(self._recent_actions[-6:-4]),
+                ]
+                if all(p == pair for p in prev_pairs):
+                    is_stuck = True
+                    stuck_desc = f"same 2-step cycle 3x: {pair[0]} -> {pair[1]}"
+
+            if is_stuck:
+                termcolor.cprint(f"  [!] STUCK: {stuck_desc}", color="red")
+                screenshot_bytes = self.screenshot_fn()
+                history.append(types.Content(role='user', parts=[
+                    types.Part.from_text(
+                        text=(
+                            f"STOP! You are stuck in a loop ({stuck_desc}) "
+                            f"and it is NOT working. "
+                            f"You MUST try a COMPLETELY DIFFERENT approach:\n"
+                            f"1. Look at the screenshot carefully — what has actually changed?\n"
+                            f"2. Try a different method entirely\n"
+                            f"3. If you cannot make progress, call task_complete(summary='FAILED: stuck')"
+                        )
+                    ),
+                    types.Part.from_bytes(
+                        mime_type='image/png', data=screenshot_bytes
+                    ),
+                ]))
+                self._recent_actions.clear()
 
         return exit_status
 

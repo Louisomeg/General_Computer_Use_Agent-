@@ -7,6 +7,7 @@ Usage:
     python main.py "Research M6 bolt specs" # direct research task
 """
 import os
+import shutil
 import sys
 
 from google import genai
@@ -15,7 +16,18 @@ from core.agentic_planner import Planner
 from core.desktop_executor import DesktopExecutor
 
 
+def _clear_pycache():
+    """Remove all __pycache__ dirs to prevent stale .pyc warnings."""
+    root = os.path.dirname(os.path.abspath(__file__))
+    for dirpath, dirnames, _ in os.walk(root):
+        for d in dirnames:
+            if d == "__pycache__":
+                shutil.rmtree(os.path.join(dirpath, d), ignore_errors=True)
+
+
 def main():
+    _clear_pycache()
+
     if not os.environ.get("GEMINI_API_KEY"):
         print("ERROR: Set GEMINI_API_KEY first!")
         print('  export GEMINI_API_KEY="your-key"')
