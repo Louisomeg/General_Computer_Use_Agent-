@@ -219,7 +219,7 @@ class AgenticLoop:
                     f"Retrying with fresh screenshot...",
                     color="yellow",
                 )
-                time.sleep(2)  # Brief pause before retry
+                time.sleep(1)  # Brief pause before retry
                 screenshot_bytes = self.screenshot_fn()
                 history.append(types.Content(role='user', parts=[
                     types.Part.from_text(
@@ -467,7 +467,7 @@ class AgenticLoop:
         return GenerateContentConfig(
             system_instruction=self.system_instruction,
             temperature=0.3,
-            max_output_tokens=2048,
+            max_output_tokens=1024,
             tools=[cu_tool, types.Tool(function_declarations=all_declarations)],
             # Highest available resolution for computer use screenshots.
             media_resolution=getattr(

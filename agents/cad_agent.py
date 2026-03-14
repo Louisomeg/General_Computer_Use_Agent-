@@ -137,9 +137,16 @@ AFTER the circle is drawn, set its exact size:
 - A dialog appears — type the RADIUS value with units, e.g. "20 mm"
 - Click OK to confirm
 
-For TUBES (concentric circles): draw the outer circle first, escape the tool,
-then activate the circle tool again and draw the inner circle at the SAME center.
-Constrain both radii. Both circles must share the same center for a valid pad.
+For TUBES (concentric circles):
+1. Draw the OUTER circle (two clicks: center, then radius point). Press Escape.
+2. The circle is still selected — IMMEDIATELY constrain its radius now:
+   Sketch -> Sketcher constraints -> Constrain radius -> type value (e.g. "20 mm") -> OK.
+3. Activate circle tool again: Sketch -> Sketcher geometries -> Circle.
+4. Draw the INNER circle at the SAME center point. Press Escape.
+5. The circle is still selected — IMMEDIATELY constrain its radius now.
+IMPORTANT: Always constrain a circle RIGHT AFTER drawing it, while it is still
+selected. Do NOT try to re-select circles by clicking in the viewport.
+If you must re-select, click the element in the model tree (left panel).
 
 ## Closing the Sketch — CRITICAL
 Do NOT rely on pressing Escape to close the sketch. Escape only cancels the active tool.
