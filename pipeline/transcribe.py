@@ -47,12 +47,13 @@ def get_transcript(video_dir: Path) -> list[dict]:
     return []
 
 
-def _parse_vtt(vtt_path: Path) -> list[dict]:
+def _parse_vtt(vtt_path) -> list[dict]:
     """Parse a WebVTT file into segments.
 
     Returns list of {start, end, text} dicts with timestamps in seconds.
     Merges consecutive segments from the same speaker to reduce noise.
     """
+    vtt_path = Path(vtt_path)
     content = vtt_path.read_text(encoding="utf-8", errors="replace")
 
     # VTT timestamp pattern: HH:MM:SS.mmm --> HH:MM:SS.mmm

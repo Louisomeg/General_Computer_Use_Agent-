@@ -83,7 +83,7 @@ def label_actions(
     """
     # Check for cached results
     if output_path.exists():
-        with open(output_path) as f:
+        with open(output_path, encoding="utf-8") as f:
             cached = json.load(f)
         print(f"[label] Using cached: {len(cached)} labeled actions")
         return cached
@@ -161,7 +161,7 @@ def label_actions(
 
     # Save results
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(labeled_actions, f, indent=2, default=str)
 
     print(f"[label] Labeled {len(labeled_actions)} actions, saved to {output_path}")

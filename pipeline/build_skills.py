@@ -50,7 +50,7 @@ def build_skill(
     # Check for existing skill with same video_id
     skill_path = skill_dir / "skill.yaml"
     if skill_path.exists():
-        with open(skill_path) as f:
+        with open(skill_path, encoding="utf-8") as f:
             existing = yaml.safe_load(f)
         if existing and existing.get("source", {}).get("video_id") == video_id:
             print(f"[build] Skill already exists for video {video_id}, skipping")

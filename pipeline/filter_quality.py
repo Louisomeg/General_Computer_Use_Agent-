@@ -62,7 +62,7 @@ def filter_actions(
     """
     # Check for cached scores
     if output_path and output_path.exists():
-        with open(output_path) as f:
+        with open(output_path, encoding="utf-8") as f:
             cached = json.load(f)
         filtered = [a for a in cached if a.get("quality_score", 0) >= min_score]
         print(f"[filter] Using cached: {len(filtered)}/{len(cached)} passed (min_score={min_score})")
@@ -122,7 +122,7 @@ def filter_actions(
     # Save all scored results
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(scored, f, indent=2, default=str)
 
     # Filter

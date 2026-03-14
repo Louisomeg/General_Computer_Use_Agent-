@@ -83,7 +83,7 @@ def load_skill(name: str) -> dict | None:
     # Check flat directory first
     path = SKILLS_DIR / f"{name}.yaml"
     if path.exists():
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f)
 
     # Check subdirectories
@@ -93,7 +93,7 @@ def load_skill(name: str) -> dict | None:
         if sub.is_dir():
             path = sub / f"{name}.yaml"
             if path.exists():
-                with open(path) as f:
+                with open(path, encoding="utf-8") as f:
                     return yaml.safe_load(f)
 
     return None
@@ -118,7 +118,7 @@ def load_tutorial_skills() -> list[dict]:
     if not SKILLS_DIR.exists():
         return tutorials
     for path in SKILLS_DIR.rglob("*.yaml"):
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             skill = yaml.safe_load(f)
             if skill and skill.get("type") == "tutorial":
                 tutorials.append(skill)
@@ -141,7 +141,7 @@ def load_knowledge_skills() -> list[dict]:
         return knowledge
     for path in SKILLS_DIR.rglob("*.yaml"):
         try:
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 # Use safe_load_all to handle multi-document YAML files
                 for doc in yaml.safe_load_all(f):
                     if doc and isinstance(doc, dict) and doc.get("type") == "knowledge":

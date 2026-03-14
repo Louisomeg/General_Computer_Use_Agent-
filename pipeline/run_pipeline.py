@@ -112,7 +112,7 @@ def run_pipeline(
         import json
         manifest = keyframe_dir / "keyframes.json"
         if manifest.exists():
-            with open(manifest) as f:
+            with open(manifest, encoding="utf-8") as f:
                 keyframes = json.load(f)
 
     # Stage 4: Label actions
@@ -127,7 +127,7 @@ def run_pipeline(
         # Load cached labels
         import json
         if labeled_path.exists():
-            with open(labeled_path) as f:
+            with open(labeled_path, encoding="utf-8") as f:
                 labeled = json.load(f)
 
     # Stage 5: Filter quality
@@ -142,7 +142,7 @@ def run_pipeline(
         # Load cached scores or use unfiltered
         import json
         if scored_path.exists():
-            with open(scored_path) as f:
+            with open(scored_path, encoding="utf-8") as f:
                 scored = json.load(f)
             filtered = [a for a in scored if a.get("quality_score", 0) >= min_score]
         else:

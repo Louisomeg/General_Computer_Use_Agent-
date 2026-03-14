@@ -52,7 +52,7 @@ def extract_keyframes(
     # Check for cached results
     manifest_path = output_dir / "keyframes.json"
     if manifest_path.exists():
-        with open(manifest_path) as f:
+        with open(manifest_path, encoding="utf-8") as f:
             cached = json.load(f)
         # Verify PNGs still exist
         if all(Path(kf["path"]).exists() for kf in cached):
@@ -145,7 +145,7 @@ def extract_keyframes(
     keyframes = _extract_frames(video_path, candidates, output_dir)
 
     # Save manifest
-    with open(manifest_path, "w") as f:
+    with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(keyframes, f, indent=2, default=str)
 
     print(f"[keyframes] Saved {len(keyframes)} keyframes to {output_dir}")
