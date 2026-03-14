@@ -177,7 +177,7 @@ class ResearchAgent:
         """Standard agent interface — run research from a Task object."""
         task.status = TaskStatus.WORKING
         try:
-            max_turns = task.params.get("max_turns", 20)
+            max_turns = int(task.params.get("max_turns", 20))
             headless = task.params.get("headless", False)
             result = self.run(task.description, max_turns=max_turns, headless=headless)
             task.complete(

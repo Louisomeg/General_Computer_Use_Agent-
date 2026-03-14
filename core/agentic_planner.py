@@ -234,7 +234,7 @@ class Planner:
 
         research_task = Task(
             description=description,
-            params={"max_turns": params.get("max_turns", 20)},
+            params={"max_turns": int(params.get("max_turns", 20))},
         )
         try:
             research_agent = get_agent("research", client=self.client)
@@ -250,12 +250,25 @@ class Planner:
             self._report(research_result)
             return research_result
 
-        self._report(research_result)
-
-        # Phase 2: Extract dimensions from research findings
+        # Quality gate: check if research actually produced useful data.
+        # The research agent catches internal errors and still marks the
+        # task as COMPLETED with a low-confidence empty result.
         research_data = (
             research_result.artifacts[0] if research_result.artifacts else {}
         )
+        findings = research_data.get("findings", {})
+        data_points = findings.get("data_points", [])
+        confidence = findings.get("confidence", "low")
+
+        if not data_points and confidence == "low":
+            print("[Planner] Research completed but produced no useful data — cannot proceed to CAD")
+            research_result.fail(
+                error="Research returned no data points with low confidence"
+            )
+            self._report(research_result)
+            return research_result
+
+        self._report(research_result)
         cad_params = self._extract_dimensions(research_data, original_request)
 
         # Phase 3: CAD with enriched description
