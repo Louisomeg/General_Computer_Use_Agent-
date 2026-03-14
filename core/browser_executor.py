@@ -146,9 +146,17 @@ class BrowserExecutor(Executor):
 
     def take_screenshot(self) -> bytes:
         """grab a png of whats on screen. the loop sends this to gemini."""
-        self._page.wait_for_load_state()
+        try:
+            self._page.wait_for_load_state(timeout=10000)
+        except Exception:
+            pass  # page may still be loading — screenshot what we have
         time.sleep(LOAD_WAIT)
-        return self._page.screenshot(type="png", full_page=False)
+        try:
+            return self._page.screenshot(type="png", full_page=False, timeout=15000)
+        except Exception:
+            # heavy page — try once more after a short wait, skip font loading
+            time.sleep(1)
+            return self._page.screenshot(type="png", full_page=False, timeout=30000)
 
     def current_url(self) -> str:
         return self._page.url
