@@ -315,7 +315,11 @@ DONE WHEN:
 
         self._save(result)
         self._display(result)
-        self.generate_pdf(result)
+        try:
+            self.generate_pdf(result)
+        except Exception as e:
+            # PDF is optional — research data is already saved as JSON
+            print(f"[ResearchAgent] PDF generation failed ({e}), raw results still saved")
         self._run_doc_agent(result)
         return result
 
@@ -537,7 +541,10 @@ SUB-QUERY 3: [specific searchable question]"""
 
         self._save(result)
         self._display(result)
-        self.generate_pdf(result)
+        try:
+            self.generate_pdf(result)
+        except Exception as e:
+            print(f"[ResearchAgent] PDF generation failed ({e}), raw results still saved")
         self._run_doc_agent(result)
         return result
 
@@ -620,6 +627,11 @@ SUB-QUERY 3: [specific searchable question]"""
         m = result["metadata"]
         query = result["query"]
 
+        # fpdf2's built-in Helvetica only supports latin-1.
+        # Scrub any Unicode chars the model may have returned.
+        def safe(text: str) -> str:
+            return text.encode("latin-1", errors="replace").decode("latin-1")
+
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=20)
         pdf.add_page()
@@ -645,7 +657,7 @@ SUB-QUERY 3: [specific searchable question]"""
         pdf.set_text_color(30, 30, 30)
         pdf.cell(0, 8, "Research Query", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 11)
-        pdf.multi_cell(0, 6, query)
+        pdf.multi_cell(0, 6, safe(query))
         pdf.ln(4)
 
         # --- confidence badge (green/amber/red depending on how sure we are) ---
@@ -663,7 +675,7 @@ SUB-QUERY 3: [specific searchable question]"""
         pdf.cell(0, 8, "Summary", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 11)
         pdf.set_text_color(50, 50, 50)
-        pdf.multi_cell(0, 6, f.get("summary", "No summary."))
+        pdf.multi_cell(0, 6, safe(f.get("summary", "No summary.")))
         pdf.ln(6)
 
         # --- data points table (the actual findings) ---
@@ -690,10 +702,10 @@ SUB-QUERY 3: [specific searchable question]"""
                 stripe = i % 2 == 0
                 if stripe:
                     pdf.set_fill_color(240, 245, 250)
-                fact = str(dp.get("fact", ""))[:45]
-                val = str(dp.get("value", ""))[:28]
-                unit = str(dp.get("unit", ""))[:12]
-                src = str(dp.get("source", ""))
+                fact = safe(str(dp.get("fact", "")))[:45]
+                val = safe(str(dp.get("value", "")))[:28]
+                unit = safe(str(dp.get("unit", "")))[:12]
+                src = safe(str(dp.get("source", "")))
                 if len(src) > 45:
                     src = src[:42] + "..."
                 pdf.cell(65, 7, fact, border=1, fill=stripe)
@@ -711,7 +723,7 @@ SUB-QUERY 3: [specific searchable question]"""
             pdf.set_font("Helvetica", "", 9)
             pdf.set_text_color(43, 87, 151)
             for s in sources:
-                pdf.multi_cell(0, 5, s)
+                pdf.multi_cell(0, 5, safe(s))
             pdf.ln(4)
 
         # --- stuff we couldnt find (gaps) ---
@@ -723,7 +735,7 @@ SUB-QUERY 3: [specific searchable question]"""
             pdf.set_font("Helvetica", "", 10)
             pdf.set_text_color(80, 80, 80)
             for g in gaps:
-                pdf.multi_cell(0, 6, f"  - {g}")
+                pdf.multi_cell(0, 6, safe(f"  - {g}"))
             pdf.ln(4)
 
         # --- footer with metadata ---
