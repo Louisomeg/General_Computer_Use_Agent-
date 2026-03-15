@@ -148,6 +148,27 @@ IMPORTANT: Always constrain a circle RIGHT AFTER drawing it, while it is still
 selected. Do NOT try to re-select circles by clicking in the viewport.
 If you must re-select, click the element in the model tree (left panel).
 
+## How to Create a Pocket (Cut Material Away) — IMPORTANT
+Pocket removes material from a solid (like hollowing out a box):
+1. First, you need an existing padded solid (create one with Sketch → Pad)
+2. Click on the FACE where you want to cut from (e.g., the TOP face of a box)
+3. "Part Design" menu → "Create sketch" — this creates a sketch ON that face
+4. Draw the cut profile (e.g., a rectangle smaller than the face, for a hollow box)
+5. Constrain the dimensions
+6. Close sketch: "Sketch" → "Close sketch"
+7. "Part Design" menu → "Pocket"
+8. Set the depth in the Tasks panel (e.g., how deep to cut)
+9. Click OK
+
+For a HOLLOW BOX: Pad a rectangle to full height, then Pocket from the top face
+with a slightly smaller rectangle (inset by wall thickness on each side).
+
+## How to Add a Fillet (Rounded Edges) — OPTIONAL
+1. Click on the edge you want to round (it highlights green)
+2. "Part Design" menu → "Fillet"
+3. Set the radius in the Tasks panel
+4. Click OK
+
 ## Closing the Sketch — CRITICAL
 Do NOT rely on pressing Escape to close the sketch. Escape only cancels the active tool.
 INSTEAD: use the menu: "Sketch" → "Close sketch". This is 100% reliable.

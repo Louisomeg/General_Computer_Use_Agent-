@@ -299,7 +299,12 @@ class Planner:
     def _extract_dimensions(
         self, research_data: dict, original_request: str,
     ) -> dict:
-        """Use Gemini to extract CAD-relevant dimensions from research."""
+        """Use Gemini to extract ONE specific set of CAD dimensions from research.
+
+        The key insight: research returns ranges and multiple options, but the
+        CAD agent needs EXACTLY ONE concrete value per dimension.  We ask the
+        LLM to choose the best single value based on the user's request.
+        """
         findings = research_data.get("findings", {})
         data_points = findings.get("data_points", [])
 
@@ -312,18 +317,24 @@ class Planner:
         )
 
         prompt = (
-            "From these research findings, extract the key dimensions "
-            "needed to design this part in CAD.\n\n"
+            "You are helping design a 3D CAD model. The research found various "
+            "dimensions. Your job is to pick ONE specific set of concrete values "
+            "that the CAD agent will use to build the model.\n\n"
             f"USER REQUEST: {original_request}\n\n"
             f"RESEARCH DATA:\n{dp_text}\n\n"
-            "Return ONLY key=value pairs (one per line) for dimensions "
-            "relevant to the CAD design.\n"
-            "Use snake_case keys. Include units in the values.\n"
-            "Only include dimensions directly useful for 3D modeling.\n\n"
-            "Example output:\n"
-            "handlebar_diameter=25.4mm\n"
-            "phone_width=75mm\n"
-            "mount_thickness=3mm"
+            "RULES:\n"
+            "- Pick ONE specific value per dimension, NOT ranges (e.g. '150mm' not '100-200mm')\n"
+            "- Convert all values to millimeters (mm)\n"
+            "- If ranges are given, pick the middle value\n"
+            "- Only include 3-6 key dimensions directly needed for 3D modeling\n"
+            "- Include wall_thickness (typically 3-5mm for boxes, 2-3mm for brackets)\n"
+            "- Use snake_case keys\n\n"
+            "Return ONLY key=value pairs, one per line. NO ranges, NO text.\n\n"
+            "Example for a jewelry box:\n"
+            "width=180mm\n"
+            "depth=130mm\n"
+            "height=80mm\n"
+            "wall_thickness=5mm"
         )
 
         for model in self.PLAN_MODELS:
@@ -342,9 +353,9 @@ class Planner:
             except Exception as e:
                 print(f"  [Planner] Dimension extraction failed ({e})")
 
-        # Fallback: mechanical conversion of all data points
+        # Fallback: pick first few data points with concrete values
         params = {}
-        for dp in data_points:
+        for dp in data_points[:5]:
             key = dp.get("fact", "").lower().replace(" ", "_").replace("-", "_")
             val = f"{dp.get('value', '')} {dp.get('unit', '')}".strip()
             if key and val:
@@ -354,10 +365,60 @@ class Planner:
     def _build_cad_description(
         self, original_request: str, research_data: dict,
     ) -> str:
-        """Enrich the CAD task description with research findings."""
+        """Enrich the CAD task description with research findings AND
+        specific FreeCAD workflow guidance.
+
+        The raw request ("Make a jewelry box") is too vague for the CAD agent.
+        We add:
+        1. A summary of research findings
+        2. Concrete FreeCAD workflow steps based on the part type
+        """
         findings = research_data.get("findings", {})
         summary = findings.get("summary", "")
 
+        parts = [original_request]
+
         if summary:
-            return f"{original_request}\n\nResearch findings:\n{summary}"
-        return original_request
+            parts.append(f"\nResearch findings:\n{summary}")
+
+        # Add specific FreeCAD workflow guidance
+        lower = original_request.lower()
+        is_box = any(w in lower for w in ["box", "case", "enclosure", "container", "chest", "holder"])
+
+        if is_box:
+            parts.append("""
+## FreeCAD Workflow for this Part
+
+You are building a HOLLOW box. Follow these steps EXACTLY:
+
+STEP 1 — Create the outer solid:
+  a) Open FreeCAD (if not already open)
+  b) Part Design menu → Create body
+  c) Part Design menu → Create sketch → select XY plane → OK
+  d) Draw a rectangle using Sketch → Sketcher geometries → Rectangle
+  e) Constrain width and depth using Sketch → Sketcher constraints → Constrain distance
+  f) Close sketch: Sketch → Close sketch
+  g) Pad it: Part Design menu → Pad → set height → OK
+
+STEP 2 — Hollow it out with a Pocket:
+  a) Click on the TOP FACE of the solid (it will highlight)
+  b) Part Design menu → Create sketch (sketch is created on the top face)
+  c) Draw a smaller rectangle INSIDE (offset by wall_thickness on each side)
+  d) Constrain the inner rectangle dimensions
+  e) Close sketch: Sketch → Close sketch
+  f) Part Design menu → Pocket → set depth (height minus bottom thickness) → OK
+
+The result is a hollow box with walls and a bottom.
+
+IMPORTANT: Do NOT just make a solid block. The box MUST be hollow inside.
+""")
+        else:
+            parts.append("""
+## FreeCAD Workflow
+1. Open FreeCAD → Part Design → Create body → Create sketch on XY plane
+2. Draw the profile geometry and constrain dimensions
+3. Close sketch → Pad to create the solid
+4. Add features (fillets, pockets, chamfers) as needed
+""")
+
+        return "\n".join(parts)
