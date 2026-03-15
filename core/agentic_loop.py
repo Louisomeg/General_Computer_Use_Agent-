@@ -151,20 +151,33 @@ class AgenticLoop:
                         types.Part.from_text(text="[continued]")
                     )
 
-    def _trim_history(self, history: list) -> int:
-        """Trim conversation history to recover from 400 errors.
+    def _reset_history(self, history: list) -> int:
+        """Reset history to initial prompt + fresh screenshot for 400 recovery.
 
-        Keeps the first 2 entries (initial prompt + first model response)
-        and the last 6 entries (recent context).  Removes everything in
-        between.  Returns the original length for logging.
+        The old _trim_history naively sliced the middle out of history, which
+        broke function-call/response pairing and role alternation — causing
+        further 400 errors.  This method instead does a clean reset: keep the
+        original prompt text, capture a fresh screenshot, and discard all
+        intermediate conversation.
+
+        Returns the original length for logging.
         """
         original_len = len(history)
-        if original_len <= 8:
+        if original_len <= 1:
             return original_len
-        # Keep first 2 (prompt context) + last 6 (recent turns)
-        keep_start = history[:2]
-        keep_end = history[-6:]
-        history[:] = keep_start + keep_end
+
+        # Extract original text parts from first entry (the initial prompt)
+        text_parts = [p for p in history[0].parts if p.text]
+        if not text_parts:
+            text_parts = [types.Part.from_text(text="Continue with the task.")]
+
+        # Build fresh initial entry: original prompt + new screenshot
+        screenshot_bytes = self.screenshot_fn()
+        new_parts = text_parts + [
+            types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes)
+        ]
+
+        history[:] = [types.Content(role='user', parts=new_parts)]
         return original_len
 
     # ── Main loop ────────────────────────────────────────────────────────
@@ -198,6 +211,7 @@ class AgenticLoop:
         self._empty_response_retries = 0  # Reset retry counter for fresh run
         self._text_only_retries = 0  # Counts turns where model talks but takes no action
         self._recent_actions = []  # Track recent actions for repetition detection
+        _400_recovered = False  # Allow one clean history reset on 400 error
 
         # ── Initial turn: prompt + optional demo images + screenshot ───
         screenshot_bytes = self.screenshot_fn()
@@ -221,6 +235,20 @@ class AgenticLoop:
             try:
                 response = self.get_model_response(history)
             except Exception as e:
+                error_str = str(e)
+                # 400 INVALID_ARGUMENT — history likely malformed (broken
+                # alternation, orphaned function responses, etc.).
+                # Reset to initial prompt + fresh screenshot and retry once.
+                if ("400" in error_str and "INVALID_ARGUMENT" in error_str
+                        and not _400_recovered):
+                    _400_recovered = True
+                    original_len = self._reset_history(history)
+                    termcolor.cprint(
+                        f"400 error — reset history from {original_len} to "
+                        f"{len(history)} entry, retrying...",
+                        color="yellow",
+                    )
+                    continue
                 print(e)
                 exit_status = "api_error"
                 break
@@ -245,22 +273,18 @@ class AgenticLoop:
                 )
                 time.sleep(1)  # Brief pause before retry
                 screenshot_bytes = self.screenshot_fn()
-                # Maintain role alternation: the API requires user/model/user/model.
-                # Since we got no model response, we must add a placeholder model
-                # Content before appending the retry user Content.
-                history.append(types.Content(role='model', parts=[
-                    types.Part.from_text(text="I need to try again."),
-                ]))
-                history.append(types.Content(role='user', parts=[
-                    types.Part.from_text(
-                        text="The previous request returned no response. "
-                             "Please look at the current screenshot and "
-                             "continue with the next action."
-                    ),
-                    types.Part.from_bytes(
-                        mime_type='image/png', data=screenshot_bytes
-                    ),
-                ]))
+                # Update the screenshot in the last user Content in-place.
+                # Do NOT fabricate model Content — Gemini 3 validates thought
+                # signatures on model entries, and fabricated ones cause 400s.
+                if history and history[-1].role == 'user':
+                    history[-1].parts = [
+                        p for p in history[-1].parts if p.inline_data is None
+                    ]
+                    history[-1].parts.append(
+                        types.Part.from_bytes(
+                            mime_type='image/png', data=screenshot_bytes
+                        )
+                    )
                 self._turn_count -= 1  # Don't count retries against the budget
                 continue
 
@@ -268,8 +292,33 @@ class AgenticLoop:
             self._empty_response_retries = 0
 
             candidate = response.candidates[0]
-            if candidate.content:
-                history.append(candidate.content)
+
+            # Candidate exists but has no content (e.g. safety-filtered).
+            # Treat like empty response — update screenshot and retry.
+            if not candidate.content:
+                self._empty_response_retries += 1
+                if self._empty_response_retries >= 3:
+                    termcolor.cprint(
+                        "Empty content 3 times in a row — stopping.",
+                        color="red",
+                    )
+                    exit_status = "empty_responses"
+                    break
+                time.sleep(1)
+                screenshot_bytes = self.screenshot_fn()
+                if history and history[-1].role == 'user':
+                    history[-1].parts = [
+                        p for p in history[-1].parts if p.inline_data is None
+                    ]
+                    history[-1].parts.append(
+                        types.Part.from_bytes(
+                            mime_type='image/png', data=screenshot_bytes
+                        )
+                    )
+                self._turn_count -= 1
+                continue
+
+            history.append(candidate.content)
 
             reasoning = self.get_text(candidate)
             function_calls = self.extract_function_calls(candidate)
@@ -284,14 +333,25 @@ class AgenticLoop:
                 turn_info += f" | {short}"
             print(turn_info)
 
-            # Handle malformed function calls — retry without breaking
+            # Handle malformed function calls — retry without breaking.
+            # Remove the malformed model content first — it may contain
+            # partial function call parts without matching responses, which
+            # would cause a 400 on the next turn.
             if (not function_calls and not reasoning
                     and candidate.finish_reason == types.FinishReason.MALFORMED_FUNCTION_CALL):
-                # Re-send the last screenshot so the model can try again
+                if history and history[-1].role == 'model':
+                    history.pop()
+                # Update screenshot on the (now-last) user Content
                 screenshot_bytes = self.screenshot_fn()
-                history.append(types.Content(role='user', parts=[
-                    types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes),
-                ]))
+                if history and history[-1].role == 'user':
+                    history[-1].parts = [
+                        p for p in history[-1].parts if p.inline_data is None
+                    ]
+                    history[-1].parts.append(
+                        types.Part.from_bytes(
+                            mime_type='image/png', data=screenshot_bytes
+                        )
+                    )
                 self._turn_count -= 1  # Don't count malformed retries against the budget
                 continue
 
@@ -452,22 +512,22 @@ class AgenticLoop:
 
             if is_stuck:
                 termcolor.cprint(f"  [!] STUCK: {stuck_desc}", color="red")
-                screenshot_bytes = self.screenshot_fn()
-                history.append(types.Content(role='user', parts=[
-                    types.Part.from_text(
-                        text=(
-                            f"STOP! You are stuck in a loop ({stuck_desc}) "
-                            f"and it is NOT working. "
-                            f"You MUST try a COMPLETELY DIFFERENT approach:\n"
-                            f"1. Look at the screenshot carefully — what has actually changed?\n"
-                            f"2. Try a different method entirely\n"
-                            f"3. If you cannot make progress, call task_complete(summary='FAILED: stuck')"
+                # Append stuck warning to the EXISTING function-response
+                # Content (last entry) instead of creating a new user Content
+                # — two consecutive user Contents breaks role alternation.
+                if history and history[-1].role == 'user':
+                    history[-1].parts.append(
+                        types.Part.from_text(
+                            text=(
+                                f"STOP! You are stuck in a loop ({stuck_desc}) "
+                                f"and it is NOT working. "
+                                f"You MUST try a COMPLETELY DIFFERENT approach:\n"
+                                f"1. Look at the screenshot carefully — what has actually changed?\n"
+                                f"2. Try a different method entirely\n"
+                                f"3. If you cannot make progress, call task_complete(summary='FAILED: stuck')"
+                            )
                         )
-                    ),
-                    types.Part.from_bytes(
-                        mime_type='image/png', data=screenshot_bytes
-                    ),
-                ]))
+                    )
                 self._recent_actions.clear()
 
         return exit_status
@@ -510,8 +570,13 @@ class AgenticLoop:
         )
 
     def get_model_response(self, history, max_retries=5, base_delay_s=1):
+        """Call Gemini and return the response.
+
+        Retries transient errors with exponential backoff.
+        400 and 429 errors are raised immediately — the caller (agentic_loop)
+        handles 400 recovery with a clean history reset.
+        """
         configuration = self.config()
-        _400_retried = False
         for attempt in range(max_retries):
             try:
                 return self.client.models.generate_content(
@@ -524,19 +589,12 @@ class AgenticLoop:
                 if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                     termcolor.cprint("Rate limit (429). Stopping.", color="yellow")
                     raise
-                # 400 INVALID_ARGUMENT — often caused by history too large or
-                # malformed.  Try trimming old turns once before giving up.
+                # 400 errors — let them propagate to main loop for proper
+                # history reset (we can't safely fix history structure here).
                 if "400" in error_str and "INVALID_ARGUMENT" in error_str:
-                    if not _400_retried and len(history) > 8:
-                        _400_retried = True
-                        trimmed = self._trim_history(history)
-                        termcolor.cprint(
-                            f"400 error — trimmed history from {trimmed} to "
-                            f"{len(history)} entries, retrying...",
-                            color="yellow",
-                        )
-                        continue
-                    termcolor.cprint(f"Permanent API error (400): {error_str[:200]}", color="red")
+                    termcolor.cprint(
+                        f"API error (400): {error_str[:200]}", color="red"
+                    )
                     raise
                 print(e)
                 if attempt < max_retries - 1:

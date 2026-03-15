@@ -307,8 +307,12 @@ Do NOT use markdown formatting. Just plain text paragraphs."""
         m = result.get("metadata", {})
         query = result.get("query", "Unknown")
 
-        # fpdf2's built-in Helvetica only supports latin-1.
+        # fpdf2's built-in Helvetica only supports latin-1 and has no
+        # glyphs for C0/C1 control characters.  Strip those first, then
+        # replace any remaining non-latin-1 chars with '?'.
         def safe(text: str) -> str:
+            import re
+            text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
             return text.encode("latin-1", errors="replace").decode("latin-1")
 
         pdf = FPDF()
@@ -337,6 +341,7 @@ Do NOT use markdown formatting. Just plain text paragraphs."""
         pdf.set_text_color(30, 30, 30)
         pdf.cell(0, 8, "Research Query", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 11)
+        pdf.set_x(pdf.l_margin)
         pdf.multi_cell(0, 6, safe(query))
         pdf.ln(4)
 
@@ -356,6 +361,7 @@ Do NOT use markdown formatting. Just plain text paragraphs."""
         pdf.set_font("Helvetica", "", 11)
         pdf.set_text_color(50, 50, 50)
         summary = f.get("enhanced_summary", f.get("summary", "No summary."))
+        pdf.set_x(pdf.l_margin)
         pdf.multi_cell(0, 6, safe(summary))
         pdf.ln(6)
 
@@ -405,6 +411,7 @@ Do NOT use markdown formatting. Just plain text paragraphs."""
             pdf.set_text_color(43, 87, 151)
             for s in sources:
                 display = s if len(s) < 120 else s[:117] + "..."
+                pdf.set_x(pdf.l_margin)
                 pdf.multi_cell(0, 5, safe(display))
             pdf.ln(4)
 
@@ -418,6 +425,7 @@ Do NOT use markdown formatting. Just plain text paragraphs."""
             pdf.set_text_color(80, 80, 80)
             for g in gaps:
                 gt = g if len(g) < 150 else g[:147] + "..."
+                pdf.set_x(pdf.l_margin)
                 pdf.multi_cell(0, 6, safe("  - {0}".format(gt)))
             pdf.ln(4)
 

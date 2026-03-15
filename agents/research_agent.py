@@ -320,6 +320,7 @@ DONE WHEN:
             self.generate_pdf(result)
         except Exception as e:
             # PDF is optional — research data is already saved as JSON
+            import traceback; traceback.print_exc()
             print(f"[ResearchAgent] PDF generation failed ({e}), raw results still saved")
         self._run_doc_agent(result)
         return result
@@ -546,6 +547,7 @@ SUB-QUERY 3: [specific searchable question]"""
         try:
             self.generate_pdf(result)
         except Exception as e:
+            import traceback; traceback.print_exc()
             print(f"[ResearchAgent] PDF generation failed ({e}), raw results still saved")
         self._run_doc_agent(result)
         return result
@@ -563,6 +565,7 @@ SUB-QUERY 3: [specific searchable question]"""
             print(f"[ResearchAgent] Documentation agent produced: {paths}")
         except Exception as e:
             # doc agent failing shouldnt kill the whole research
+            import traceback; traceback.print_exc()
             print(f"[ResearchAgent] Doc agent failed ({e}), raw results still saved")
 
     def _save(self, result):
@@ -629,9 +632,12 @@ SUB-QUERY 3: [specific searchable question]"""
         m = result["metadata"]
         query = result["query"]
 
-        # fpdf2's built-in Helvetica only supports latin-1.
-        # Scrub any Unicode chars the model may have returned.
+        # fpdf2's built-in Helvetica only supports latin-1 and has no
+        # glyphs for C0/C1 control characters.  Strip those first, then
+        # replace any remaining non-latin-1 chars with '?'.
         def safe(text: str) -> str:
+            import re
+            text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
             return text.encode("latin-1", errors="replace").decode("latin-1")
 
         pdf = FPDF()
@@ -659,6 +665,7 @@ SUB-QUERY 3: [specific searchable question]"""
         pdf.set_text_color(30, 30, 30)
         pdf.cell(0, 8, "Research Query", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 11)
+        pdf.set_x(pdf.l_margin)
         pdf.multi_cell(0, 6, safe(query))
         pdf.ln(4)
 
@@ -677,6 +684,7 @@ SUB-QUERY 3: [specific searchable question]"""
         pdf.cell(0, 8, "Summary", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 11)
         pdf.set_text_color(50, 50, 50)
+        pdf.set_x(pdf.l_margin)
         pdf.multi_cell(0, 6, safe(f.get("summary", "No summary.")))
         pdf.ln(6)
 
@@ -725,6 +733,7 @@ SUB-QUERY 3: [specific searchable question]"""
             pdf.set_font("Helvetica", "", 9)
             pdf.set_text_color(43, 87, 151)
             for s in sources:
+                pdf.set_x(pdf.l_margin)
                 pdf.multi_cell(0, 5, safe(s))
             pdf.ln(4)
 
@@ -737,6 +746,7 @@ SUB-QUERY 3: [specific searchable question]"""
             pdf.set_font("Helvetica", "", 10)
             pdf.set_text_color(80, 80, 80)
             for g in gaps:
+                pdf.set_x(pdf.l_margin)
                 pdf.multi_cell(0, 6, safe(f"  - {g}"))
             pdf.ln(4)
 
