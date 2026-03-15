@@ -54,7 +54,7 @@ def download_video(url: str, output_dir: Path = None) -> dict:
     # Download with yt-dlp (use Python module invocation for cross-platform compat)
     cmd = [
         sys.executable, "-m", "yt_dlp",
-        "--format", "bestvideo[height<=720]+bestaudio/best[height<=720]",
+        "--format", "bestvideo[height<=720][vcodec^=avc1]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]",
         "--merge-output-format", "mp4",
         "--write-auto-sub",
         "--sub-lang", "en",
