@@ -131,8 +131,8 @@ class AgenticLoop:
         """Remove old screenshots from history, keeping only the most recent.
 
         Walks backward through history and strips inline_data (images) from
-        older turns to stay within context limits.  Also removes Content
-        objects left completely empty after stripping (prevents 400 errors).
+        older turns to stay within context limits.  Replaces fully-stripped
+        Content with a placeholder to maintain role alternation.
         """
         screenshot_count = 0
         for content in reversed(history):
@@ -145,9 +145,27 @@ class AgenticLoop:
                             parts_to_remove.append(part)
                 for part in parts_to_remove:
                     content.parts.remove(part)
+                # If all parts were removed, add placeholder to keep alternation
+                if not content.parts:
+                    content.parts.append(
+                        types.Part.from_text(text="[continued]")
+                    )
 
-        # Remove any Content objects left with empty parts lists
-        history[:] = [c for c in history if c.parts]
+    def _trim_history(self, history: list) -> int:
+        """Trim conversation history to recover from 400 errors.
+
+        Keeps the first 2 entries (initial prompt + first model response)
+        and the last 6 entries (recent context).  Removes everything in
+        between.  Returns the original length for logging.
+        """
+        original_len = len(history)
+        if original_len <= 8:
+            return original_len
+        # Keep first 2 (prompt context) + last 6 (recent turns)
+        keep_start = history[:2]
+        keep_end = history[-6:]
+        history[:] = keep_start + keep_end
+        return original_len
 
     # ── Main loop ────────────────────────────────────────────────────────
 
@@ -227,6 +245,12 @@ class AgenticLoop:
                 )
                 time.sleep(1)  # Brief pause before retry
                 screenshot_bytes = self.screenshot_fn()
+                # Maintain role alternation: the API requires user/model/user/model.
+                # Since we got no model response, we must add a placeholder model
+                # Content before appending the retry user Content.
+                history.append(types.Content(role='model', parts=[
+                    types.Part.from_text(text="I need to try again."),
+                ]))
                 history.append(types.Content(role='user', parts=[
                     types.Part.from_text(
                         text="The previous request returned no response. "
@@ -487,6 +511,7 @@ class AgenticLoop:
 
     def get_model_response(self, history, max_retries=5, base_delay_s=1):
         configuration = self.config()
+        _400_retried = False
         for attempt in range(max_retries):
             try:
                 return self.client.models.generate_content(
@@ -499,9 +524,18 @@ class AgenticLoop:
                 if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                     termcolor.cprint("Rate limit (429). Stopping.", color="yellow")
                     raise
-                # 400 INVALID_ARGUMENT is a permanent error (e.g. malformed
-                # history, missing safety_acknowledgement).  Retrying won't help.
+                # 400 INVALID_ARGUMENT — often caused by history too large or
+                # malformed.  Try trimming old turns once before giving up.
                 if "400" in error_str and "INVALID_ARGUMENT" in error_str:
+                    if not _400_retried and len(history) > 8:
+                        _400_retried = True
+                        trimmed = self._trim_history(history)
+                        termcolor.cprint(
+                            f"400 error — trimmed history from {trimmed} to "
+                            f"{len(history)} entries, retrying...",
+                            color="yellow",
+                        )
+                        continue
                     termcolor.cprint(f"Permanent API error (400): {error_str[:200]}", color="red")
                     raise
                 print(e)
