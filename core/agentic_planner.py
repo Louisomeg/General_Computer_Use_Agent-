@@ -17,7 +17,7 @@ from google import genai
 from agents.registry import get_agent, list_agents
 from core.executor import Executor
 from core.models import Task, TaskStatus
-from core.settings import DEFAULT_MODEL
+from core.settings import DEFAULT_MODEL, PLANNING_MODEL
 
 # Import agent modules so @register decorators fire
 import agents.cad_agent       # noqa: F401
@@ -137,7 +137,7 @@ class Planner:
     # Models to try for planning, in order.  Planning is text-only so any
     # model works.  If the primary model has no quota (e.g. free tier), we
     # automatically try the next one.
-    PLAN_MODELS = [DEFAULT_MODEL]
+    PLAN_MODELS = [PLANNING_MODEL]
 
     def _plan(self, user_request: str) -> tuple[str, str, dict]:
         """Use Gemini to decide agent + params. Falls back to parsing if API fails."""
