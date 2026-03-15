@@ -29,7 +29,7 @@ from agents.registry import register
 from core.agentic_loop import AgenticLoop, REPORT_FINDINGS_DECLARATION
 from core.browser_executor import BrowserExecutor
 from core.models import Task, TaskStatus
-from core.settings import DEFAULT_MODEL
+from core.settings import DEFAULT_MODEL, PLANNING_MODEL as SETTINGS_PLANNING_MODEL
 
 # documentation agent runs after us to make proper reports
 try:
@@ -39,9 +39,9 @@ except ImportError:
     HAS_DOC_AGENT = False
 
 
-# both planning and browsing use the same model now.
-# keeping separate constants so we can split them later if needed.
-PLANNING_MODEL = DEFAULT_MODEL
+# Planning (text-only LLM calls) uses the smarter model.
+# Browsing (Computer Use screen interaction) stays on Flash.
+PLANNING_MODEL = SETTINGS_PLANNING_MODEL
 BROWSER_MODEL = DEFAULT_MODEL
 
 # this prompt took me ages to get right honestly. every line is here
