@@ -436,36 +436,40 @@ STEP 1 — Create the outer solid:
   a) Open FreeCAD (if not already open)
   b) Part Design menu → Create body
   c) Part Design menu → Create sketch → select XY plane → OK
-  d) Draw a rectangle using Sketch → Sketcher geometries → Rectangle
-     (click two opposite corners anywhere in the viewport — exact size doesn't matter yet)
-  e) Constrain the HORIZONTAL edge to {width} mm:
-     click one horizontal edge → Sketch → Sketcher constraints → Constrain distance → type "{width} mm" → OK
-  f) Constrain the VERTICAL edge to {depth} mm:
-     click one vertical edge → Sketch → Sketcher constraints → Constrain distance → type "{depth} mm" → OK
+  d) Draw ONE rectangle: Sketch → Sketcher geometries → Rectangle → click two corners → Escape
+  e) Select the HORIZONTAL edge (click it — it turns green)
+     THEN: Sketch → Sketcher constraints → Constrain distance → type "{width} mm" → click OK
+     VERIFY: a dimension annotation appears near the edge
+  f) Select the VERTICAL edge (click it — it turns green)
+     THEN: Sketch → Sketcher constraints → Constrain distance → type "{depth} mm" → click OK
+     VERIFY: a second dimension annotation appears
   g) Close sketch: Sketch → Close sketch
-  h) Pad it: Part Design menu → Pad → type "{height}" in the Length field → click OK
+  h) Pad: Part Design menu → Pad → type "{height}" in the Length field → click OK
 
 STEP 2 — Hollow it out with a Pocket:
-  a) Click on the TOP FACE of the padded solid (the large flat face on top — it will highlight green)
+  a) Click on the TOP FACE of the padded solid (the large flat face on top — it highlights green/blue)
   b) Part Design menu → Create sketch (a new sketch is created ON the top face)
-  c) Draw a rectangle using Sketch → Sketcher geometries → Rectangle
-     (click two opposite corners INSIDE the face — approximate size is fine)
-  d) Constrain the HORIZONTAL edge to **{inner_width} mm**:
-     click one horizontal edge → Sketch → Sketcher constraints → Constrain distance → type "{inner_width} mm" → OK
-  e) Constrain the VERTICAL edge to **{inner_depth} mm**:
-     click one vertical edge → Sketch → Sketcher constraints → Constrain distance → type "{inner_depth} mm" → OK
-  f) OPTIONAL but recommended: center the inner rectangle on the face using
-     Sketch → Sketcher constraints → Constrain symmetric (select two opposite edges + center axis)
+  c) Draw ONE rectangle: Sketch → Sketcher geometries → Rectangle → click two corners INSIDE the face → Escape
+     NEVER draw a second rectangle. One rectangle per sketch.
+  d) Select the HORIZONTAL edge (click it — it turns green)
+     THEN: Sketch → Sketcher constraints → Constrain distance → type "{inner_width} mm" → click OK
+     VERIFY: dimension annotation appears
+  e) Select the VERTICAL edge (click it — it turns green)
+     THEN: Sketch → Sketcher constraints → Constrain distance → type "{inner_depth} mm" → click OK
+     VERIFY: second dimension annotation appears
+  f) DO NOT close the sketch until you see TWO dimension annotations (one for each edge).
   g) Close sketch: Sketch → Close sketch
   h) Part Design menu → Pocket → type "{pocket_depth}" in the Length/Depth field → click OK
 
 The result is a hollow box: {width}×{depth}×{height} mm outer, with {wall} mm thick walls and bottom.
 
 CRITICAL RULES:
-- You MUST constrain BOTH edges (horizontal AND vertical) of each rectangle.
+- Select the edge FIRST (it turns green), THEN open Constrain distance. Never open the
+  constraint dialog without an edge selected — it causes errors.
+- You MUST constrain BOTH edges of each rectangle. Do NOT close the sketch until both are done.
 - The inner rectangle MUST be {inner_width} mm × {inner_depth} mm (NOT the same as the outer).
+- NEVER draw a second rectangle on the same sketch. If the first is wrong, undo (Ctrl+Z).
 - Do NOT just make a solid block. The box MUST be hollow inside.
-- After padding, you MUST click the TOP face, NOT a side face.
 """)
         else:
             parts.append("""

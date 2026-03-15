@@ -110,22 +110,39 @@ The rectangle tool uses a TWO-CLICK workflow:
 4. The rectangle is now created between those two points
 5. Press key_combination("escape") to exit the rectangle tool
 
-AFTER the rectangle is drawn, add dimension constraints to BOTH edges:
-1. Click on one HORIZONTAL edge of the rectangle (click at the midpoint of the line)
-   - Activate constraint via: "Sketch" menu → "Sketcher constraints" → "Constrain distance"
-   - A dialog appears with a number field — type the value WITH units, e.g. "30 mm"
-     (always include " mm" after the number — FreeCAD may default to micrometers otherwise)
-   - Click the OK button in the dialog to confirm (do NOT just press Enter)
-2. Click on one VERTICAL edge of the rectangle (click at the midpoint of the vertical line)
-   - Activate constraint via: "Sketch" menu → "Sketcher constraints" → "Constrain distance"
-   - Type the value with units, e.g. "20 mm" → Click OK
-
-CRITICAL: You MUST constrain BOTH the horizontal AND vertical edges. If you skip one,
-the rectangle keeps its arbitrary click-determined size on that axis, which is WRONG.
+NEVER draw a SECOND rectangle on the same sketch. One rectangle per sketch.
+If the first rectangle looks wrong, undo (Ctrl+Z) and redraw — do NOT add another one.
 
 IMPORTANT: Draw the rectangle AWAY from the center origin (avoid the area where
 the red X-axis and green Y-axis lines cross). Place both clicks in the upper-left
 area of the viewport so edges don't overlap with axis lines.
+
+## How to Constrain a Rectangle (CRITICAL — follow this EXACTLY)
+After drawing the rectangle, you MUST set BOTH the width AND height. Do them one at a time:
+
+CONSTRAIN THE WIDTH (horizontal edge):
+  1. First click on a HORIZONTAL edge of the rectangle (it turns green when selected)
+  2. ONLY AFTER the edge is green: "Sketch" → "Sketcher constraints" → "Constrain distance"
+  3. A dialog labeled "Insert length" appears with an input field
+  4. Type the width value WITH units (e.g. "196.0 mm")
+  5. Click the OK button in the dialog (do NOT press Enter — click OK)
+  6. VERIFY: A dimension annotation (number with arrows) should appear near the edge
+
+CONSTRAIN THE HEIGHT (vertical edge):
+  1. Click on a VERTICAL edge of the rectangle (it turns green when selected)
+  2. ONLY AFTER the edge is green: "Sketch" → "Sketcher constraints" → "Constrain distance"
+  3. A dialog labeled "Insert length" appears
+  4. Type the height value WITH units (e.g. "130.0 mm")
+  5. Click the OK button
+  6. VERIFY: A second dimension annotation should appear near the vertical edge
+
+CRITICAL RULES:
+- You MUST select the edge FIRST (it turns green), THEN open the constraint menu.
+  Opening the constraint dialog without a selected edge causes errors.
+- You MUST constrain BOTH edges. If you only do one, the other stays wrong.
+- After each constraint, LOOK at the sketch — you should see a number with arrows.
+  If no dimension appears, the constraint FAILED. Undo (Ctrl+Z) and try again.
+- Always include " mm" after the number (FreeCAD may default to micrometers otherwise).
 
 ## How FreeCAD's Circle Tool Works (IMPORTANT)
 The circle tool uses a TWO-CLICK workflow:
@@ -158,24 +175,19 @@ Pocket removes material from a solid (like hollowing out a box):
 1. First, you need an existing padded solid (create one with Sketch → Pad)
 2. Click on the FACE where you want to cut from (e.g., the TOP face of a box)
    - For boxes: click the LARGE FLAT TOP face (NOT a thin side face)
-   - The face will highlight green when selected
+   - The face will highlight green/blue when selected
 3. "Part Design" menu → "Create sketch" — this creates a sketch ON that face
-4. Draw the cut profile rectangle:
-   - Use "Sketch" → "Sketcher geometries" → "Rectangle"
+4. Draw ONE rectangle using "Sketch" → "Sketcher geometries" → "Rectangle"
    - Click TWO OPPOSITE corners INSIDE the face — approximate position is OK
-5. **CRITICAL: Constrain BOTH edges of the inner rectangle:**
-   - Click a HORIZONTAL edge → "Sketch" → "Sketcher constraints" → "Constrain distance"
-     → type the inner width value with " mm" → click OK
-   - Click a VERTICAL edge → "Sketch" → "Sketcher constraints" → "Constrain distance"
-     → type the inner depth value with " mm" → click OK
-   - YOU MUST CONSTRAIN BOTH EDGES. If you only constrain one, you get a narrow SLOT, not a cavity.
+   - Press Escape to exit rectangle tool
+   - NEVER draw a second rectangle. If the first is wrong, undo and redo.
+5. Constrain BOTH edges using the same steps as above:
+   - Select HORIZONTAL edge (green) → Constrain distance → type inner width → click OK
+   - Select VERTICAL edge (green) → Constrain distance → type inner depth → click OK
+   - DO NOT close the sketch until BOTH dimension annotations are visible.
 6. Close sketch: "Sketch" → "Close sketch"
 7. "Part Design" menu → "Pocket"
-8. Set the depth in the Tasks panel (e.g., how deep to cut) → Click OK
-
-COMMON MISTAKE: If you forget to constrain the VERTICAL edge, the rectangle stays
-very thin on one axis and the pocket becomes a narrow slot instead of a rectangular cavity.
-Always constrain BOTH horizontal AND vertical edges.
+8. Set the depth in the Tasks panel → Click OK
 
 For a HOLLOW BOX: Pad a rectangle to full height, then Pocket from the top face
 with a rectangle inset by wall thickness on each side (inner = outer − 2 × wall).
