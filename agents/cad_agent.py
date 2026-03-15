@@ -110,13 +110,18 @@ The rectangle tool uses a TWO-CLICK workflow:
 4. The rectangle is now created between those two points
 5. Press key_combination("escape") to exit the rectangle tool
 
-AFTER the rectangle is drawn, add dimension constraints:
-- Click on one HORIZONTAL edge of the rectangle (click at the midpoint of the line)
-- Activate constraint via: "Sketch" menu → "Sketcher constraints" → "Constrain distance"
-- A dialog appears with a number field — type the value WITH units, e.g. "30 mm"
-  (always include " mm" after the number — FreeCAD may default to micrometers otherwise)
-- Click the OK button in the dialog to confirm (do NOT just press Enter)
-- Repeat for one VERTICAL edge
+AFTER the rectangle is drawn, add dimension constraints to BOTH edges:
+1. Click on one HORIZONTAL edge of the rectangle (click at the midpoint of the line)
+   - Activate constraint via: "Sketch" menu → "Sketcher constraints" → "Constrain distance"
+   - A dialog appears with a number field — type the value WITH units, e.g. "30 mm"
+     (always include " mm" after the number — FreeCAD may default to micrometers otherwise)
+   - Click the OK button in the dialog to confirm (do NOT just press Enter)
+2. Click on one VERTICAL edge of the rectangle (click at the midpoint of the vertical line)
+   - Activate constraint via: "Sketch" menu → "Sketcher constraints" → "Constrain distance"
+   - Type the value with units, e.g. "20 mm" → Click OK
+
+CRITICAL: You MUST constrain BOTH the horizontal AND vertical edges. If you skip one,
+the rectangle keeps its arbitrary click-determined size on that axis, which is WRONG.
 
 IMPORTANT: Draw the rectangle AWAY from the center origin (avoid the area where
 the red X-axis and green Y-axis lines cross). Place both clicks in the upper-left
@@ -152,16 +157,28 @@ If you must re-select, click the element in the model tree (left panel).
 Pocket removes material from a solid (like hollowing out a box):
 1. First, you need an existing padded solid (create one with Sketch → Pad)
 2. Click on the FACE where you want to cut from (e.g., the TOP face of a box)
+   - For boxes: click the LARGE FLAT TOP face (NOT a thin side face)
+   - The face will highlight green when selected
 3. "Part Design" menu → "Create sketch" — this creates a sketch ON that face
-4. Draw the cut profile (e.g., a rectangle smaller than the face, for a hollow box)
-5. Constrain the dimensions
+4. Draw the cut profile rectangle:
+   - Use "Sketch" → "Sketcher geometries" → "Rectangle"
+   - Click TWO OPPOSITE corners INSIDE the face — approximate position is OK
+5. **CRITICAL: Constrain BOTH edges of the inner rectangle:**
+   - Click a HORIZONTAL edge → "Sketch" → "Sketcher constraints" → "Constrain distance"
+     → type the inner width value with " mm" → click OK
+   - Click a VERTICAL edge → "Sketch" → "Sketcher constraints" → "Constrain distance"
+     → type the inner depth value with " mm" → click OK
+   - YOU MUST CONSTRAIN BOTH EDGES. If you only constrain one, you get a narrow SLOT, not a cavity.
 6. Close sketch: "Sketch" → "Close sketch"
 7. "Part Design" menu → "Pocket"
-8. Set the depth in the Tasks panel (e.g., how deep to cut)
-9. Click OK
+8. Set the depth in the Tasks panel (e.g., how deep to cut) → Click OK
+
+COMMON MISTAKE: If you forget to constrain the VERTICAL edge, the rectangle stays
+very thin on one axis and the pocket becomes a narrow slot instead of a rectangular cavity.
+Always constrain BOTH horizontal AND vertical edges.
 
 For a HOLLOW BOX: Pad a rectangle to full height, then Pocket from the top face
-with a slightly smaller rectangle (inset by wall thickness on each side).
+with a rectangle inset by wall thickness on each side (inner = outer − 2 × wall).
 
 ## How to Add a Fillet (Rounded Edges) — OPTIONAL
 1. Click on the edge you want to round (it highlights green)

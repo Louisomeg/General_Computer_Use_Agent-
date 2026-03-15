@@ -278,7 +278,7 @@ class Planner:
         print(f"{'='*60}\n")
 
         cad_description = self._build_cad_description(
-            original_request, research_data,
+            original_request, research_data, cad_params,
         )
         cad_task = Task(description=cad_description, params=cad_params)
 
@@ -362,19 +362,29 @@ class Planner:
                 params[key] = val
         return params
 
+    @staticmethod
+    def _parse_mm(value: str) -> float | None:
+        """Extract a numeric mm value from strings like '180mm', '180 mm', '180'."""
+        import re
+        m = re.search(r"([\d.]+)", str(value))
+        return float(m.group(1)) if m else None
+
     def _build_cad_description(
         self, original_request: str, research_data: dict,
+        cad_params: dict | None = None,
     ) -> str:
         """Enrich the CAD task description with research findings AND
-        specific FreeCAD workflow guidance.
+        specific FreeCAD workflow guidance with PRE-COMPUTED dimensions.
 
         The raw request ("Make a jewelry box") is too vague for the CAD agent.
         We add:
         1. A summary of research findings
-        2. Concrete FreeCAD workflow steps based on the part type
+        2. Concrete FreeCAD workflow steps with EXACT numeric dimensions
+           so the vision agent never has to do arithmetic.
         """
         findings = research_data.get("findings", {})
         summary = findings.get("summary", "")
+        cad_params = cad_params or {}
 
         parts = [original_request]
 
@@ -383,10 +393,41 @@ class Planner:
 
         # Add specific FreeCAD workflow guidance
         lower = original_request.lower()
-        is_box = any(w in lower for w in ["box", "case", "enclosure", "container", "chest", "holder"])
+        is_box = any(w in lower for w in [
+            "box", "case", "enclosure", "container", "chest", "holder",
+        ])
 
         if is_box:
-            parts.append("""
+            # Pre-compute all dimensions so the agent gets concrete numbers
+            width = self._parse_mm(cad_params.get("width") or
+                                   cad_params.get("total_width", ""))
+            depth = self._parse_mm(cad_params.get("depth") or
+                                   cad_params.get("total_depth", ""))
+            height = self._parse_mm(cad_params.get("height") or
+                                    cad_params.get("total_height", ""))
+            wall = self._parse_mm(cad_params.get("wall_thickness", ""))
+
+            # Sensible defaults if research didn't provide values
+            width = width or 150.0
+            depth = depth or 100.0
+            height = height or 60.0
+            wall = wall or 5.0
+
+            inner_width = width - 2 * wall
+            inner_depth = depth - 2 * wall
+            pocket_depth = height - wall   # leave wall-thickness as bottom
+
+            parts.append(f"""
+## EXACT DIMENSIONS (pre-computed — use these numbers directly)
+
+- Outer width:  {width} mm
+- Outer depth:  {depth} mm
+- Outer height: {height} mm
+- Wall thickness: {wall} mm
+- **Inner pocket width:  {inner_width} mm** (outer width minus 2 × wall)
+- **Inner pocket depth:  {inner_depth} mm** (outer depth minus 2 × wall)
+- **Pocket cut depth:    {pocket_depth} mm** (outer height minus bottom thickness)
+
 ## FreeCAD Workflow for this Part
 
 You are building a HOLLOW box. Follow these steps EXACTLY:
@@ -396,21 +437,35 @@ STEP 1 — Create the outer solid:
   b) Part Design menu → Create body
   c) Part Design menu → Create sketch → select XY plane → OK
   d) Draw a rectangle using Sketch → Sketcher geometries → Rectangle
-  e) Constrain width and depth using Sketch → Sketcher constraints → Constrain distance
-  f) Close sketch: Sketch → Close sketch
-  g) Pad it: Part Design menu → Pad → set height → OK
+     (click two opposite corners anywhere in the viewport — exact size doesn't matter yet)
+  e) Constrain the HORIZONTAL edge to {width} mm:
+     click one horizontal edge → Sketch → Sketcher constraints → Constrain distance → type "{width} mm" → OK
+  f) Constrain the VERTICAL edge to {depth} mm:
+     click one vertical edge → Sketch → Sketcher constraints → Constrain distance → type "{depth} mm" → OK
+  g) Close sketch: Sketch → Close sketch
+  h) Pad it: Part Design menu → Pad → type "{height}" in the Length field → click OK
 
 STEP 2 — Hollow it out with a Pocket:
-  a) Click on the TOP FACE of the solid (it will highlight)
-  b) Part Design menu → Create sketch (sketch is created on the top face)
-  c) Draw a smaller rectangle INSIDE (offset by wall_thickness on each side)
-  d) Constrain the inner rectangle dimensions
-  e) Close sketch: Sketch → Close sketch
-  f) Part Design menu → Pocket → set depth (height minus bottom thickness) → OK
+  a) Click on the TOP FACE of the padded solid (the large flat face on top — it will highlight green)
+  b) Part Design menu → Create sketch (a new sketch is created ON the top face)
+  c) Draw a rectangle using Sketch → Sketcher geometries → Rectangle
+     (click two opposite corners INSIDE the face — approximate size is fine)
+  d) Constrain the HORIZONTAL edge to **{inner_width} mm**:
+     click one horizontal edge → Sketch → Sketcher constraints → Constrain distance → type "{inner_width} mm" → OK
+  e) Constrain the VERTICAL edge to **{inner_depth} mm**:
+     click one vertical edge → Sketch → Sketcher constraints → Constrain distance → type "{inner_depth} mm" → OK
+  f) OPTIONAL but recommended: center the inner rectangle on the face using
+     Sketch → Sketcher constraints → Constrain symmetric (select two opposite edges + center axis)
+  g) Close sketch: Sketch → Close sketch
+  h) Part Design menu → Pocket → type "{pocket_depth}" in the Length/Depth field → click OK
 
-The result is a hollow box with walls and a bottom.
+The result is a hollow box: {width}×{depth}×{height} mm outer, with {wall} mm thick walls and bottom.
 
-IMPORTANT: Do NOT just make a solid block. The box MUST be hollow inside.
+CRITICAL RULES:
+- You MUST constrain BOTH edges (horizontal AND vertical) of each rectangle.
+- The inner rectangle MUST be {inner_width} mm × {inner_depth} mm (NOT the same as the outer).
+- Do NOT just make a solid block. The box MUST be hollow inside.
+- After padding, you MUST click the TOP face, NOT a side face.
 """)
         else:
             parts.append("""
