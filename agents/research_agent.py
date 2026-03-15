@@ -758,8 +758,8 @@ SUB-QUERY 3: [specific searchable question]"""
 
         # --- save the pdf ---
         if filepath is None:
-            safe = "".join(c if c.isalnum() or c == " " else "_" for c in query[:40])
-            filepath = OUTPUT_DIR / f"report_{safe.strip().replace(' ','_')}_{datetime.now():%Y%m%d_%H%M%S}.pdf"
+            safe_name = "".join(c if c.isalnum() or c == " " else "_" for c in query[:40])
+            filepath = OUTPUT_DIR / f"report_{safe_name.strip().replace(' ','_')}_{datetime.now():%Y%m%d_%H%M%S}.pdf"
         filepath = Path(filepath)
         pdf.output(str(filepath))
         print(f"\nPDF report saved: {filepath}")

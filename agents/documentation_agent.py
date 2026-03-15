@@ -307,6 +307,10 @@ Do NOT use markdown formatting. Just plain text paragraphs."""
         m = result.get("metadata", {})
         query = result.get("query", "Unknown")
 
+        # fpdf2's built-in Helvetica only supports latin-1.
+        def safe(text: str) -> str:
+            return text.encode("latin-1", errors="replace").decode("latin-1")
+
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=20)
         pdf.add_page()
@@ -333,7 +337,7 @@ Do NOT use markdown formatting. Just plain text paragraphs."""
         pdf.set_text_color(30, 30, 30)
         pdf.cell(0, 8, "Research Query", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 11)
-        pdf.multi_cell(0, 6, query)
+        pdf.multi_cell(0, 6, safe(query))
         pdf.ln(4)
 
         # confidence
@@ -352,7 +356,7 @@ Do NOT use markdown formatting. Just plain text paragraphs."""
         pdf.set_font("Helvetica", "", 11)
         pdf.set_text_color(50, 50, 50)
         summary = f.get("enhanced_summary", f.get("summary", "No summary."))
-        pdf.multi_cell(0, 6, summary)
+        pdf.multi_cell(0, 6, safe(summary))
         pdf.ln(6)
 
         # data table
@@ -379,10 +383,10 @@ Do NOT use markdown formatting. Just plain text paragraphs."""
                 stripe = i % 2 == 0
                 if stripe:
                     pdf.set_fill_color(240, 245, 250)
-                fact = str(dp.get("fact", ""))[:45]
-                val = str(dp.get("value", ""))[:28]
-                unit = str(dp.get("unit", ""))[:12]
-                src = str(dp.get("source", ""))
+                fact = safe(str(dp.get("fact", "")))[:45]
+                val = safe(str(dp.get("value", "")))[:28]
+                unit = safe(str(dp.get("unit", "")))[:12]
+                src = safe(str(dp.get("source", "")))
                 if len(src) > 45:
                     src = src[:42] + "..."
                 pdf.cell(65, 7, fact, border=1, fill=stripe)
@@ -401,7 +405,7 @@ Do NOT use markdown formatting. Just plain text paragraphs."""
             pdf.set_text_color(43, 87, 151)
             for s in sources:
                 display = s if len(s) < 120 else s[:117] + "..."
-                pdf.multi_cell(0, 5, display)
+                pdf.multi_cell(0, 5, safe(display))
             pdf.ln(4)
 
         # gaps
@@ -414,7 +418,7 @@ Do NOT use markdown formatting. Just plain text paragraphs."""
             pdf.set_text_color(80, 80, 80)
             for g in gaps:
                 gt = g if len(g) < 150 else g[:147] + "..."
-                pdf.multi_cell(0, 6, "  - {0}".format(gt))
+                pdf.multi_cell(0, 6, safe("  - {0}".format(gt)))
             pdf.ln(4)
 
         # footer
