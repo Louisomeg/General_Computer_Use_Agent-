@@ -1,0 +1,399 @@
+<mxfile host="app.diagrams.net" modified="2026-03-15T12:00:00.000Z" agent="Claude" version="24.0.0" type="device">
+  <diagram id="architecture" name="System Architecture">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- ============ TITLE ============ -->
+        <mxCell id="title" value="General Computer Use Agent — System Architecture" style="text;html=1;fontSize=22;fontStyle=1;fillColor=none;strokeColor=none;fontColor=#1a1a2e;align=center;" vertex="1" parent="1">
+          <mxGeometry x="400" y="10" width="800" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle" value="Multi-Agent FreeCAD Design System powered by Google Gemini Computer Use" style="text;html=1;fontSize=12;fillColor=none;strokeColor=none;fontColor=#666666;align=center;" vertex="1" parent="1">
+          <mxGeometry x="400" y="45" width="800" height="25" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ USER LAYER ============ -->
+        <mxCell id="user" value="&lt;b&gt;User&lt;/b&gt;" style="shape=actor;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="750" y="80" width="60" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ ENTRY POINT ============ -->
+        <mxCell id="main" value="&lt;b&gt;main.py&lt;/b&gt;&lt;br&gt;CLI / Interactive REPL&lt;br&gt;&lt;i&gt;Entry Point&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontSize=11;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="710" y="170" width="140" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ PLANNER ============ -->
+        <mxCell id="planner_box" value="" style="swimlane;startSize=30;fillColor=#fff2cc;strokeColor=#d6b656;rounded=1;shadow=1;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="590" y="270" width="380" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="planner_title" value="&lt;b&gt;Agentic Planner&lt;/b&gt; (core/agentic_planner.py)" style="text;html=1;fontSize=12;fillColor=none;strokeColor=none;fontColor=#7a6000;" vertex="1" parent="planner_box">
+          <mxGeometry x="10" y="5" width="360" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="planner_route" value="&lt;b&gt;Task Router&lt;/b&gt;&lt;br&gt;Gemini classifies requests&lt;br&gt;cad | research | research+cad" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9e6;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="planner_box">
+          <mxGeometry x="20" y="35" width="160" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="planner_extract" value="&lt;b&gt;Dimension Extractor&lt;/b&gt;&lt;br&gt;Research data to CAD params&lt;br&gt;key=value pairs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9e6;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="planner_box">
+          <mxGeometry x="200" y="35" width="160" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ AGENTS ROW ============ -->
+        <!-- Research Agent -->
+        <mxCell id="research_box" value="" style="swimlane;startSize=30;fillColor=#d5e8d4;strokeColor=#82b366;rounded=1;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="450" width="300" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="research_title" value="&lt;b&gt;Research Agent&lt;/b&gt; (agents/research_agent.py)" style="text;html=1;fontSize=11;fillColor=none;strokeColor=none;fontColor=#2d6a2e;" vertex="1" parent="research_box">
+          <mxGeometry x="10" y="5" width="280" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="research_plan" value="&lt;b&gt;Planner&lt;/b&gt;&lt;br&gt;Sub-questions&lt;br&gt;Search queries" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f2e6;strokeColor=#82b366;fontSize=10;" vertex="1" parent="research_box">
+          <mxGeometry x="15" y="35" width="120" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="research_browse" value="&lt;b&gt;Browser Loop&lt;/b&gt;&lt;br&gt;30 turns max&lt;br&gt;Multi-site visits" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f2e6;strokeColor=#82b366;fontSize=10;" vertex="1" parent="research_box">
+          <mxGeometry x="15" y="100" width="120" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="research_report" value="&lt;b&gt;report_findings()&lt;/b&gt;&lt;br&gt;data_points[]&lt;br&gt;sources[]&lt;br&gt;confidence" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f2e6;strokeColor=#82b366;fontSize=10;" vertex="1" parent="research_box">
+          <mxGeometry x="155" y="35" width="130" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="research_parallel" value="&lt;b&gt;Parallel Mode&lt;/b&gt;&lt;br&gt;3 browsers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f2e6;strokeColor=#82b366;fontSize=10;" vertex="1" parent="research_box">
+          <mxGeometry x="155" y="100" width="130" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- Documentation Agent -->
+        <mxCell id="doc_box" value="" style="swimlane;startSize=30;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="670" width="300" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="doc_title" value="&lt;b&gt;Documentation Agent&lt;/b&gt; (agents/documentation_agent.py)" style="text;html=1;fontSize=11;fillColor=none;strokeColor=none;fontColor=#6a3d9a;" vertex="1" parent="doc_box">
+          <mxGeometry x="5" y="5" width="290" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="doc_word" value="&lt;b&gt;Word (.docx)&lt;/b&gt;&lt;br&gt;python-docx&lt;br&gt;Tables + Headers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f6;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="doc_box">
+          <mxGeometry x="15" y="35" width="125" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="doc_pdf" value="&lt;b&gt;PDF Report&lt;/b&gt;&lt;br&gt;fpdf2&lt;br&gt;Styled Tables" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f6;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="doc_box">
+          <mxGeometry x="155" y="35" width="125" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- CAD Agent -->
+        <mxCell id="cad_box" value="" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="590" y="450" width="340" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="cad_title" value="&lt;b&gt;CAD Agent&lt;/b&gt; (agents/cad_agent.py)" style="text;html=1;fontSize=11;fillColor=none;strokeColor=none;fontColor=#1a5276;" vertex="1" parent="cad_box">
+          <mxGeometry x="10" y="5" width="320" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="cad_sys" value="&lt;b&gt;System Instruction&lt;/b&gt;&lt;br&gt;Desktop nav + CAD addendum&lt;br&gt;FreeCAD menu workflows&lt;br&gt;Error recovery rules" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f0fa;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="cad_box">
+          <mxGeometry x="15" y="35" width="150" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="cad_skills" value="&lt;b&gt;Skill Injection&lt;/b&gt;&lt;br&gt;Tutorial tips&lt;br&gt;Demo screenshots&lt;br&gt;Troubleshooting" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f0fa;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="cad_box">
+          <mxGeometry x="180" y="35" width="140" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="cad_loop_info" value="&lt;b&gt;120 turns max&lt;/b&gt;&lt;br&gt;Menu-driven interaction&lt;br&gt;task_complete() signal" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f0fa;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="cad_box">
+          <mxGeometry x="15" y="115" width="305" height="45" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ CORE ENGINE ============ -->
+        <mxCell id="loop_box" value="" style="swimlane;startSize=30;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="430" y="690" width="500" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="loop_title" value="&lt;b&gt;Agentic Loop&lt;/b&gt; (core/agentic_loop.py) — Shared Engine" style="text;html=1;fontSize=12;fillColor=none;strokeColor=none;fontColor=#8b0000;" vertex="1" parent="loop_box">
+          <mxGeometry x="10" y="5" width="480" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="loop_step1" value="&lt;b&gt;1&lt;/b&gt; Screenshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4e4;strokeColor=#b85450;fontSize=10;" vertex="1" parent="loop_box">
+          <mxGeometry x="15" y="40" width="90" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="loop_step2" value="&lt;b&gt;2&lt;/b&gt; Send to&lt;br&gt;Gemini" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4e4;strokeColor=#b85450;fontSize=10;" vertex="1" parent="loop_box">
+          <mxGeometry x="120" y="40" width="90" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="loop_step3" value="&lt;b&gt;3&lt;/b&gt; Function&lt;br&gt;Calls" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4e4;strokeColor=#b85450;fontSize=10;" vertex="1" parent="loop_box">
+          <mxGeometry x="225" y="40" width="90" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="loop_step4" value="&lt;b&gt;4&lt;/b&gt; Execute&lt;br&gt;Actions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4e4;strokeColor=#b85450;fontSize=10;" vertex="1" parent="loop_box">
+          <mxGeometry x="330" y="40" width="90" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="loop_step5" value="&lt;b&gt;5&lt;/b&gt; Repeat" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4e4;strokeColor=#b85450;fontSize=10;" vertex="1" parent="loop_box">
+          <mxGeometry x="395" y="85" width="90" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="loop_recovery" value="&lt;b&gt;Error Recovery&lt;/b&gt;&lt;br&gt;400 history reset | Empty response retry (5x) | Stuck detection | Malformed FC handler" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4e4;strokeColor=#b85450;fontSize=9;" vertex="1" parent="loop_box">
+          <mxGeometry x="15" y="95" width="370" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- Loop arrows -->
+        <mxCell id="ls12" edge="1" parent="loop_box" source="loop_step1" target="loop_step2" style="fontSize=10;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ls23" edge="1" parent="loop_box" source="loop_step2" target="loop_step3" style="fontSize=10;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ls34" edge="1" parent="loop_box" source="loop_step3" target="loop_step4" style="fontSize=10;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ls45" edge="1" parent="loop_box" source="loop_step4" target="loop_step5" style="edgeStyle=orthogonalEdgeStyle;fontSize=10;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ EXECUTORS ============ -->
+        <mxCell id="desktop_exec" value="&lt;b&gt;Desktop Executor&lt;/b&gt;&lt;br&gt;xdotool (X11)&lt;br&gt;Coord: 0-1000 to pixels&lt;br&gt;click, type, scroll, drag" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="610" y="890" width="160" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="browser_exec" value="&lt;b&gt;Browser Executor&lt;/b&gt;&lt;br&gt;Playwright (Chromium)&lt;br&gt;1440x900 viewport&lt;br&gt;click, navigate, scroll" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="890" width="160" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ APPLICATIONS ============ -->
+        <mxCell id="freecad" value="&lt;b&gt;FreeCAD 1.0&lt;/b&gt;&lt;br&gt;3D CAD Application&lt;br&gt;Ubuntu XFCE Desktop" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3d9ff;strokeColor=#0066cc;fontSize=11;fontStyle=1;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="590" y="1000" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="chrome" value="&lt;b&gt;Chromium Browser&lt;/b&gt;&lt;br&gt;Google / Bing / DuckDuckGo&lt;br&gt;Multi-site research" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#388e3c;fontSize=11;fontStyle=1;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="180" y="1000" width="200" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ EXTERNAL SERVICES ============ -->
+        <mxCell id="gemini" value="&lt;b&gt;Google Gemini API&lt;/b&gt;&lt;br&gt;gemini-3-flash-preview&lt;br&gt;Computer Use + Vision" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#e65100;fontSize=11;fontStyle=1;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="700" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="screenshot" value="&lt;b&gt;Screenshot&lt;/b&gt;&lt;br&gt;scrot + PIL resize&lt;br&gt;1280x800 to 1440x900" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#e65100;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="790" width="160" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ SKILL SYSTEM (Right side) ============ -->
+        <mxCell id="skills_box" value="" style="swimlane;startSize=30;fillColor=#f0f0f0;strokeColor=#999999;rounded=1;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="440" width="260" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="skills_title" value="&lt;b&gt;Skill System&lt;/b&gt; (skills/freecad/)" style="text;html=1;fontSize=11;fillColor=none;strokeColor=none;fontColor=#555;" vertex="1" parent="skills_box">
+          <mxGeometry x="10" y="5" width="240" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="skills_tutorial" value="&lt;b&gt;Tutorials&lt;/b&gt; (YAML)&lt;br&gt;Tips + Troubleshooting&lt;br&gt;10 skill files" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;fontSize=10;" vertex="1" parent="skills_box">
+          <mxGeometry x="15" y="40" width="110" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="skills_demo" value="&lt;b&gt;Demos&lt;/b&gt;&lt;br&gt;YAML + PNGs&lt;br&gt;Visual examples" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;fontSize=10;" vertex="1" parent="skills_box">
+          <mxGeometry x="140" y="40" width="105" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="skills_retrieval" value="&lt;b&gt;Skill Retrieval&lt;/b&gt;&lt;br&gt;Keyword matching&lt;br&gt;Task to demo mapping" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;fontSize=10;" vertex="1" parent="skills_box">
+          <mxGeometry x="15" y="110" width="230" height="45" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ PIPELINE (Bottom right) ============ -->
+        <mxCell id="pipeline_box" value="" style="swimlane;startSize=30;fillColor=#ffe6cc;strokeColor=#d79b00;rounded=1;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="90" width="280" height="300" as="geometry"/>
+        </mxCell>
+        <mxCell id="pipeline_title" value="&lt;b&gt;Skill Learning Pipeline&lt;/b&gt; (pipeline/)" style="text;html=1;fontSize=11;fillColor=none;strokeColor=none;fontColor=#7a5800;" vertex="1" parent="pipeline_box">
+          <mxGeometry x="10" y="5" width="260" height="25" as="geometry"/>
+        </mxCell>
+        <mxCell id="pipe_yt" value="YouTube URL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;fontSize=10;fontStyle=1;" vertex="1" parent="pipeline_box">
+          <mxGeometry x="90" y="35" width="100" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="pipe_crawl" value="1. Crawl (yt-dlp, h264)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;fontSize=9;" vertex="1" parent="pipeline_box">
+          <mxGeometry x="70" y="75" width="140" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="pipe_transcribe" value="2. Transcribe (VTT/Whisper)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;fontSize=9;" vertex="1" parent="pipeline_box">
+          <mxGeometry x="70" y="110" width="140" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="pipe_keyframes" value="3. Keyframes (OpenCV MOG2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;fontSize=9;" vertex="1" parent="pipeline_box">
+          <mxGeometry x="70" y="145" width="140" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="pipe_label" value="4. Label (Gemini Vision)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;fontSize=9;" vertex="1" parent="pipeline_box">
+          <mxGeometry x="70" y="180" width="140" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="pipe_filter" value="5. Filter (Quality 0-5)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;fontSize=9;" vertex="1" parent="pipeline_box">
+          <mxGeometry x="70" y="215" width="140" height="28" as="geometry"/>
+        </mxCell>
+        <mxCell id="pipe_build" value="6. Build (YAML + PNGs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;fontSize=9;fontStyle=1;" vertex="1" parent="pipeline_box">
+          <mxGeometry x="70" y="250" width="140" height="28" as="geometry"/>
+        </mxCell>
+
+        <!-- Pipeline arrows -->
+        <mxCell id="p01" edge="1" parent="pipeline_box" source="pipe_yt" target="pipe_crawl">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="p12" edge="1" parent="pipeline_box" source="pipe_crawl" target="pipe_transcribe">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="p23" edge="1" parent="pipeline_box" source="pipe_transcribe" target="pipe_keyframes">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="p34" edge="1" parent="pipeline_box" source="pipe_keyframes" target="pipe_label">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="p45" edge="1" parent="pipeline_box" source="pipe_label" target="pipe_filter">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="p56" edge="1" parent="pipeline_box" source="pipe_filter" target="pipe_build">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ OUTPUTS ============ -->
+        <mxCell id="outputs" value="&lt;b&gt;outputs/research_results/&lt;/b&gt;&lt;br&gt;JSON + Word + PDF Reports" style="shape=document;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="830" width="180" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ AGENT REGISTRY ============ -->
+        <mxCell id="registry" value="&lt;b&gt;Agent Registry&lt;/b&gt;&lt;br&gt;@register() + get_agent()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;fontSize=10;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="440" y="420" width="140" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ CONNECTIONS ============ -->
+        <!-- User to Main -->
+        <mxCell id="e_user_main" edge="1" parent="1" source="user" target="main" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Main to Planner -->
+        <mxCell id="e_main_planner" edge="1" parent="1" source="main" target="planner_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Planner to Research -->
+        <mxCell id="e_planner_research" value="research" edge="1" parent="1" source="planner_box" target="research_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;fontSize=10;fontColor=#2d6a2e;fontStyle=1;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="500" y="380"/>
+              <mxPoint x="500" y="520"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Planner to CAD -->
+        <mxCell id="e_planner_cad" value="cad" edge="1" parent="1" source="planner_box" target="cad_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;strokeWidth=2;fontSize=10;fontColor=#1a5276;fontStyle=1;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Research to Doc -->
+        <mxCell id="e_research_doc" value="auto-generates" edge="1" parent="1" source="research_box" target="doc_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;strokeWidth=1;dashed=1;fontSize=9;fontColor=#6a3d9a;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Research to Planner (data back) -->
+        <mxCell id="e_research_planner" value="data_points" edge="1" parent="1" source="research_box" target="planner_extract" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;strokeWidth=1;dashed=1;fontSize=9;fontColor=#7a6000;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="470" y="540"/>
+              <mxPoint x="470" y="410"/>
+              <mxPoint x="920" y="410"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Agents to Agentic Loop -->
+        <mxCell id="e_research_loop" edge="1" parent="1" source="research_box" target="loop_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=1;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="400" y="630"/>
+              <mxPoint x="400" y="750"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_cad_loop" edge="1" parent="1" source="cad_box" target="loop_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=1;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Loop to Executors -->
+        <mxCell id="e_loop_desktop" edge="1" parent="1" source="loop_box" target="desktop_exec" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_loop_browser" edge="1" parent="1" source="loop_box" target="browser_exec" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="430" y="870"/>
+              <mxPoint x="280" y="870"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Executors to Apps -->
+        <mxCell id="e_desktop_freecad" edge="1" parent="1" source="desktop_exec" target="freecad" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#0066cc;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_browser_chrome" edge="1" parent="1" source="browser_exec" target="chrome" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#388e3c;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Loop to Gemini -->
+        <mxCell id="e_loop_gemini" value="screenshots + history" edge="1" parent="1" source="loop_box" target="gemini" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#e65100;strokeWidth=2;fontSize=9;fontColor=#e65100;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_gemini_loop" value="function calls" edge="1" parent="1" source="gemini" target="loop_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#e65100;strokeWidth=2;dashed=1;fontSize=9;fontColor=#e65100;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1050" y="730"/>
+              <mxPoint x="1050" y="760"/>
+              <mxPoint x="930" y="760"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Screenshot -->
+        <mxCell id="e_screenshot_gemini" edge="1" parent="1" source="screenshot" target="gemini" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#e65100;dashed=1;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Skills to CAD -->
+        <mxCell id="e_skills_cad" value="injected into prompt" edge="1" parent="1" source="skills_box" target="cad_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#999;strokeWidth=1;dashed=1;fontSize=9;fontColor=#666;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Pipeline to Skills -->
+        <mxCell id="e_pipeline_skills" value="generates" edge="1" parent="1" source="pipeline_box" target="skills_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d79b00;strokeWidth=1;dashed=1;fontSize=9;fontColor=#7a5800;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Doc to Outputs -->
+        <mxCell id="e_doc_outputs" edge="1" parent="1" source="doc_box" target="outputs" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;strokeWidth=1;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ LEGEND ============ -->
+        <mxCell id="legend_box" value="" style="swimlane;startSize=25;fillColor=#fafafa;strokeColor=#ccc;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="900" width="260" height="160" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend_title" value="&lt;b&gt;Legend&lt;/b&gt;" style="text;html=1;fontSize=11;fillColor=none;strokeColor=none;" vertex="1" parent="legend_box">
+          <mxGeometry x="100" y="2" width="60" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg1" value="" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="legend_box">
+          <mxGeometry x="15" y="30" width="20" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg1t" value="CAD / Desktop components" style="text;html=1;fontSize=9;fillColor=none;strokeColor=none;" vertex="1" parent="legend_box">
+          <mxGeometry x="45" y="28" width="200" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg2" value="" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="legend_box">
+          <mxGeometry x="15" y="52" width="20" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg2t" value="Research / Browser components" style="text;html=1;fontSize=9;fillColor=none;strokeColor=none;" vertex="1" parent="legend_box">
+          <mxGeometry x="45" y="50" width="200" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg3" value="" style="rounded=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="legend_box">
+          <mxGeometry x="15" y="74" width="20" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg3t" value="Documentation components" style="text;html=1;fontSize=9;fillColor=none;strokeColor=none;" vertex="1" parent="legend_box">
+          <mxGeometry x="45" y="72" width="200" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg4" value="" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="legend_box">
+          <mxGeometry x="15" y="96" width="20" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg4t" value="Core engine (Agentic Loop)" style="text;html=1;fontSize=9;fillColor=none;strokeColor=none;" vertex="1" parent="legend_box">
+          <mxGeometry x="45" y="94" width="200" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg5" value="" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="legend_box">
+          <mxGeometry x="15" y="118" width="20" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg5t" value="Planning / Orchestration" style="text;html=1;fontSize=9;fillColor=none;strokeColor=none;" vertex="1" parent="legend_box">
+          <mxGeometry x="45" y="116" width="200" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg6" value="" style="rounded=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="legend_box">
+          <mxGeometry x="15" y="140" width="20" height="15" as="geometry"/>
+        </mxCell>
+        <mxCell id="leg6t" value="Skill Learning Pipeline" style="text;html=1;fontSize=9;fillColor=none;strokeColor=none;" vertex="1" parent="legend_box">
+          <mxGeometry x="45" y="138" width="200" height="20" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ VM INFO BOX ============ -->
+        <mxCell id="vm_info" value="&lt;b&gt;VM Environment&lt;/b&gt;&lt;br&gt;Ubuntu Linux + XFCE + X11&lt;br&gt;1280x800 screen (resized to 1440x900)&lt;br&gt;xdotool + scrot + FreeCAD 1.0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;fontSize=10;dashed=1;shadow=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="520" y="1080" width="260" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- ============ RESEARCH+CAD WORKFLOW ANNOTATION ============ -->
+        <mxCell id="workflow_note" value="&lt;b&gt;research+cad workflow:&lt;/b&gt;&lt;br&gt;1. Research agent browses web&lt;br&gt;2. Extract dimensions from findings&lt;br&gt;3. CAD agent builds with real specs" style="shape=note;whiteSpace=wrap;html=1;fillColor=#ffffcc;strokeColor=#d6b656;fontSize=9;size=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="430" y="190" width="200" height="70" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
