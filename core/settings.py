@@ -24,7 +24,7 @@ APP_LAUNCH_DELAY = 3.0          # Pause after launching an application (used by 
 SEARCH_TYPE_DELAY = 1.0         # Pause after typing in launcher (used by freecad_functions)
 
 # Model configuration
-DEFAULT_MODEL = "gemini-3-flash-preview"
+DEFAULT_MODEL = "gemini-3.1-pro-preview"
 
 # Screenshot
 SCREENSHOT_PATH = "/tmp/agent_screenshot.png"
