@@ -36,15 +36,20 @@ DESCRIPTION: <clear task description for the agent>
 PARAMS: <key=value pairs, one per line, or NONE>
 
 Rules:
-- "cad" agent: creating/designing/modeling 3D parts in FreeCAD when dimensions are already known.
-  Also for desktop tasks like opening applications, clicking on things, file management.
+- "cad" agent: creating/designing/modeling 3D parts in FreeCAD. Use this for:
+  (a) Tasks where the user provides exact dimensions (e.g., "50mm tall cylinder with radius 15mm")
+  (b) SIMPLE everyday objects where default dimensions are fine (boxes, containers, trays,
+      cubes, stands, plates, blocks, frames, simple holders). The system will add sensible
+      default dimensions automatically. No research needed for these.
+  (c) Desktop tasks like opening applications, clicking on things, file management.
 - "research" agent: ONLY for finding information online — specs, standards, looking things up on the web
-- "research+cad" workflow: for design/creation tasks where the user does NOT provide specific
-  dimensions or specifications. First research the right dimensions, then create in CAD.
-  Use this when the user says "make a phone holder", "design a bracket for X", "create a mount
-  for Y" — any design task where you'd need to look up real-world specs first.
-- If the user already provides exact dimensions (e.g., "50mm tall cylinder with radius 15mm"),
-  just use "cad" directly — no research needed.
+- "research+cad" workflow: ONLY for SPECIALIZED design tasks where you need specific real-world
+  measurements that you don't know. Examples: "phone holder for bicycle handlebar" (need
+  handlebar diameter and phone size), "bracket for M6 bolt" (need bolt specs), "mount for
+  a GoPro camera" (need GoPro mounting standard). Use this ONLY when the design DEPENDS ON
+  external measurements.
+- IMPORTANT: for simple objects like "make a box", "create a container", "build a tray" —
+  use "cad" NOT "research+cad". Research is expensive and often fails.
 - If the task requires browsing the internet for information only, use "research"
 - DESCRIPTION should be a clear instruction the agent can act on
 - PARAMS should extract specific values (dimensions, materials, part names, etc.)
@@ -67,6 +72,16 @@ max_turns=30
 User: "Open FreeCAD and create a new Part Design body"
 AGENT: cad
 DESCRIPTION: Open FreeCAD and create a new document with a Part Design Body
+PARAMS: NONE
+
+User: "Make a simple box to store jewelry"
+AGENT: cad
+DESCRIPTION: Create a hollow jewelry storage box in FreeCAD with sensible default dimensions
+PARAMS: NONE
+
+User: "Create a container for pens"
+AGENT: cad
+DESCRIPTION: Create a hollow pen/pencil container in FreeCAD with sensible default dimensions
 PARAMS: NONE
 
 User: "Design a phone holder for a bicycle handlebar"
@@ -108,6 +123,17 @@ class Planner:
         # Multi-agent workflow: research first, then CAD
         if agent_name == "research+cad":
             return self._run_research_then_cad(user_request, description, params)
+
+        # For CAD design tasks without specific dimensions, add sensible
+        # defaults and generate a detailed action plan.  This skips research
+        # entirely — much faster and avoids rate-limit / captcha failures.
+        if agent_name == "cad" and self._is_design_task(user_request) and not params:
+            print("  [Planner] Design task without dimensions — adding defaults")
+            params = self._get_default_dimensions(user_request)
+            print(f"  [Planner] Default params: {params}")
+            description = self._build_cad_description(
+                user_request, {}, params,
+            )
 
         # Single-agent path (existing behavior)
         task = Task(description=description, params=params)
@@ -202,10 +228,20 @@ class Planner:
         design_keywords = ["design", "make", "build", "create"]
         has_dimensions = any(c.isdigit() for c in request) and "mm" in lower
 
+        # Simple everyday objects that don't need research
+        simple_objects = [
+            "box", "cube", "container", "tray", "shelf", "plate",
+            "block", "stand", "base", "frame", "chest", "case",
+            "drawer", "bin", "pot", "cup", "vase",
+        ]
+
         if any(kw in lower for kw in research_keywords):
             return "research", request, {"max_turns": 20}
         elif any(kw in lower for kw in design_keywords) and not has_dimensions:
-            # Design task without dimensions — research first
+            # Simple common objects → cad with defaults (no research needed)
+            if any(obj in lower for obj in simple_objects):
+                return "cad", request, {}
+            # Specialized items → research first
             return "research+cad", request, {"max_turns": 20}
         else:
             # Default to desktop agent — most tasks involve the GUI
@@ -220,6 +256,73 @@ class Planner:
         else:
             # generic fallback
             return {"client": self.client}
+
+    # ── Simple design tasks (skip research) ──────────────────────────
+
+    @staticmethod
+    def _is_design_task(request: str) -> bool:
+        """Check if this is a design/creation task (vs a desktop/info task)."""
+        lower = request.lower()
+        design_words = [
+            "make", "create", "design", "build", "model",
+            "box", "container", "holder", "bracket", "case",
+            "enclosure", "tray", "stand", "shelf", "mount",
+        ]
+        return any(w in lower for w in design_words)
+
+    def _get_default_dimensions(self, request: str) -> dict:
+        """Pick sensible default dimensions for common objects.
+
+        Uses Gemini 3.1 Pro to reason about the right size, with a
+        hardcoded fallback if the LLM call fails.
+        """
+        prompt = (
+            f'Pick sensible real-world default dimensions for: "{request}"\n\n'
+            "Return ONLY key=value pairs, one per line. All values in mm.\n"
+            "Include: width, depth, height, wall_thickness\n"
+            "Keep it practical — use real-world sizes for the object.\n\n"
+            "Example for a jewelry box:\n"
+            "width=180mm\n"
+            "depth=120mm\n"
+            "height=60mm\n"
+            "wall_thickness=5mm\n"
+        )
+
+        for model in self.PLAN_MODELS:
+            try:
+                response = self.client.models.generate_content(
+                    model=model, contents=prompt,
+                )
+                params = {}
+                for line in response.text.strip().split("\n"):
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        k, v = line.split("=", 1)
+                        params[k.strip()] = v.strip()
+                if params:
+                    print(f"  [Planner] LLM-generated defaults: {params}")
+                    return params
+            except Exception as e:
+                print(f"  [Planner] Default dimension generation failed ({e})")
+
+        # Hardcoded fallback for common objects
+        lower = request.lower()
+        if any(w in lower for w in ["jewelry", "jewellery", "trinket", "ring"]):
+            return {"width": "180mm", "depth": "120mm", "height": "60mm",
+                    "wall_thickness": "5mm"}
+        elif any(w in lower for w in ["pen", "pencil", "marker", "stationery"]):
+            return {"width": "80mm", "depth": "80mm", "height": "120mm",
+                    "wall_thickness": "4mm"}
+        elif any(w in lower for w in ["tool", "wrench", "screwdriver"]):
+            return {"width": "300mm", "depth": "150mm", "height": "80mm",
+                    "wall_thickness": "5mm"}
+        elif any(w in lower for w in ["phone", "mobile"]):
+            return {"width": "85mm", "depth": "175mm", "height": "15mm",
+                    "wall_thickness": "3mm"}
+        else:
+            # Generic box/container
+            return {"width": "150mm", "depth": "100mm", "height": "60mm",
+                    "wall_thickness": "5mm"}
 
     # ── Multi-agent workflow ──────────────────────────────────────────
 
