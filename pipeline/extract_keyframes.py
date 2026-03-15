@@ -23,7 +23,7 @@ def extract_keyframes(
     output_dir: Path,
     threshold: int = 15000,
     min_gap_frames: int = 30,
-    max_duration_s: int = 600,
+    max_duration_s: int = 1200,
     mask_viewport: bool = True,
 ) -> list[dict]:
     """Extract keyframe PNGs using MOG2 background subtraction.
