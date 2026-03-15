@@ -85,6 +85,7 @@ class AgenticLoop:
         use_browser_environment: bool = False,
         custom_declarations: Optional[List[types.FunctionDeclaration]] = None,
         finish_function_name: str = "task_complete",
+        max_output_tokens: int = 2048,
     ):
         self.client = client
         self.model_name = model_name
@@ -97,8 +98,10 @@ class AgenticLoop:
         # This lets agents pass filtered shortcut sets to reduce per-turn overhead.
         self.custom_declarations = custom_declarations
         self.finish_function_name = finish_function_name
+        self.max_output_tokens = max_output_tokens
         self._turn_count = 0
         self._empty_response_retries = 0
+        self._empty_reset_done = False  # one-shot history reset on persistent empty responses
         self._cached_config = self._build_config()
 
     @property
@@ -209,6 +212,7 @@ class AgenticLoop:
         """
         self._turn_count = 0  # Reset per call so each invocation gets a fresh budget
         self._empty_response_retries = 0  # Reset retry counter for fresh run
+        self._empty_reset_done = False  # Allow one history reset on persistent empty responses
         self._text_only_retries = 0  # Counts turns where model talks but takes no action
         self._recent_actions = []  # Track recent actions for repetition detection
         _400_recovered = False  # Allow one clean history reset on 400 error
@@ -258,16 +262,30 @@ class AgenticLoop:
             # due to content-safety filters or API hiccups.
             if not response.candidates:
                 self._empty_response_retries += 1
-                if self._empty_response_retries >= 3:
+                if self._empty_response_retries >= 5:
                     termcolor.cprint(
-                        "Empty response 3 times in a row — stopping.",
+                        "Empty response 5 times in a row — stopping.",
                         color="red",
                     )
                     exit_status = "empty_responses"
                     break
+                # After 3 consecutive empties, try history reset for fresh context.
+                # Something in the conversation may be triggering safety filters.
+                if (self._empty_response_retries == 3
+                        and not self._empty_reset_done
+                        and len(history) > 1):
+                    self._empty_reset_done = True
+                    original_len = self._reset_history(history)
+                    termcolor.cprint(
+                        f"3 empty responses — reset history ({original_len} → "
+                        f"{len(history)} entry) for fresh context...",
+                        color="yellow",
+                    )
+                    self._turn_count -= 1
+                    continue
                 termcolor.cprint(
                     f"Response has no candidates (attempt "
-                    f"{self._empty_response_retries}/3). "
+                    f"{self._empty_response_retries}/5). "
                     f"Retrying with fresh screenshot...",
                     color="yellow",
                 )
@@ -297,13 +315,25 @@ class AgenticLoop:
             # Treat like empty response — update screenshot and retry.
             if not candidate.content:
                 self._empty_response_retries += 1
-                if self._empty_response_retries >= 3:
+                if self._empty_response_retries >= 5:
                     termcolor.cprint(
-                        "Empty content 3 times in a row — stopping.",
+                        "Empty content 5 times in a row — stopping.",
                         color="red",
                     )
                     exit_status = "empty_responses"
                     break
+                if (self._empty_response_retries == 3
+                        and not self._empty_reset_done
+                        and len(history) > 1):
+                    self._empty_reset_done = True
+                    original_len = self._reset_history(history)
+                    termcolor.cprint(
+                        f"3 empty contents — reset history ({original_len} → "
+                        f"{len(history)} entry) for fresh context...",
+                        color="yellow",
+                    )
+                    self._turn_count -= 1
+                    continue
                 time.sleep(1)
                 screenshot_bytes = self.screenshot_fn()
                 if history and history[-1].role == 'user':
@@ -557,7 +587,7 @@ class AgenticLoop:
         return GenerateContentConfig(
             system_instruction=self.system_instruction,
             temperature=0.3,
-            max_output_tokens=1024,
+            max_output_tokens=self.max_output_tokens,
             tools=[cu_tool, types.Tool(function_declarations=all_declarations)],
             # Highest available resolution for computer use screenshots.
             media_resolution=getattr(

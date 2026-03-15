@@ -143,10 +143,14 @@ Confidence levels:
 1. NEVER fabricate data. If you cannot find something, say so in the gaps list.
 2. NEVER guess dimensions, specifications, or material properties.
 3. ALWAYS note your sources — every data point needs a URL.
-4. ALWAYS call report_findings() when done. Do not just stop.
-5. If you are running low on turns, call report_findings() with partial results.
-6. Be efficient — 2-3 good sources is enough for most facts.
+4. ALWAYS call report_findings() when done. Do not just stop without reporting.
+5. If you are running low on turns (you will see a WARNING), call report_findings() IMMEDIATELY
+   with whatever data you have. Partial data is MUCH better than no data at all.
+6. Be efficient — visit 3-5 good sources. Extract data quickly and move on.
 7. Prioritise structured data (tables, spec sheets) over prose.
+8. If Google is blocked or unhelpful, switch to bing.com or duckduckgo.com IMMEDIATELY.
+   You can also navigate directly to known authoritative websites (e.g. engineering reference sites).
+9. Do NOT spend more than 2-3 turns on a single website. Extract what you can and move on.
 """
 
 # all json results and pdf reports go here
@@ -244,7 +248,7 @@ DONE WHEN:
     # the standard mode. one browser, one question, does everything start to finish.
     # this is what runs when you dont pass --parallel
 
-    def run(self, query: str, max_turns: int = 20, headless: bool = False) -> dict:
+    def run(self, query: str, max_turns: int = 30, headless: bool = False) -> dict:
         """open one browser, do the research, save json + pdf."""
         start = time.time()
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -256,10 +260,18 @@ DONE WHEN:
         full_prompt = (
             f"RESEARCH TASK: {query}\n\n"
             f"RESEARCH PLAN:\n{self.research_plan}\n\n"
-            f"Execute this plan now. Start searching. If Google blocks you, "
-            f"use bing.com or duckduckgo.com. Visit multiple different websites. "
-            f"If a page is broken or blocked, go back and try the next search result. "
-            f"Call report_findings() when you have enough data."
+            f"Execute this plan now. Follow these rules:\n"
+            f"1. Start by searching on Google. If Google blocks you or gives poor results, "
+            f"switch to bing.com or duckduckgo.com immediately.\n"
+            f"2. Visit AT LEAST 3-5 different websites to cross-reference data. "
+            f"Do NOT rely on a single source.\n"
+            f"3. If a page is broken, blocked, or paywalled, go BACK immediately and "
+            f"try the NEXT search result — do not waste turns on bad pages.\n"
+            f"4. Extract SPECIFIC numbers with units (mm, inches, etc.) — not vague descriptions.\n"
+            f"5. When you have data from multiple sources, call report_findings() with ALL data points. "
+            f"Do NOT keep searching forever — 3-5 good sources is enough.\n"
+            f"6. If you are running low on turns, call report_findings() IMMEDIATELY with "
+            f"whatever data you have so far. Partial data is better than no data."
         )
 
         print(f"\n{'='*60}")
@@ -278,6 +290,8 @@ DONE WHEN:
                     max_turns=max_turns,
                     use_browser_environment=True,
                     finish_function_name="report_findings",
+                    # report_findings() can have many data_points — need headroom
+                    max_output_tokens=4096,
                 )
                 loop.agentic_loop(full_prompt, browser)
                 self.findings = browser.research_findings
@@ -369,6 +383,7 @@ DONE WHEN:
                     max_turns=max_turns,
                     use_browser_environment=True,
                     finish_function_name="report_findings",
+                    max_output_tokens=4096,
                 )
                 loop.agentic_loop(prompt, browser)
 

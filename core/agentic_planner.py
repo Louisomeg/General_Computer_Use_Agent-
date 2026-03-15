@@ -62,7 +62,7 @@ User: "What are the standard dimensions of an M8 hex bolt?"
 AGENT: research
 DESCRIPTION: Find standard dimensions of an M8 hex bolt including head size, thread pitch, and length options
 PARAMS:
-max_turns=20
+max_turns=30
 
 User: "Open FreeCAD and create a new Part Design body"
 AGENT: cad
@@ -73,13 +73,13 @@ User: "Design a phone holder for a bicycle handlebar"
 AGENT: research+cad
 DESCRIPTION: Research bicycle handlebar and phone dimensions, then design a phone holder mount
 PARAMS:
-max_turns=20
+max_turns=30
 
 User: "Make a bracket for an M6 bolt"
 AGENT: research+cad
 DESCRIPTION: Research M6 bolt dimensions including head size and thread specs, then create a mounting bracket
 PARAMS:
-max_turns=20
+max_turns=30
 """
 
 
