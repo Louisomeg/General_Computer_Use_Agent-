@@ -6,6 +6,7 @@ A multi-agent system that autonomously operates an Ubuntu Linux desktop to perfo
 
 - [Overview](#overview)
 - [System Architecture](#system-architecture)
+- [Demo](#demo)
 - [VM Environment Setup](#vm-environment-setup)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -15,14 +16,13 @@ A multi-agent system that autonomously operates an Ubuntu Linux desktop to perfo
   - [Documentation Agent](#documentation-agent)
 - [Multi-Agent Workflow](#multi-agent-workflow)
 - [The Agentic Loop](#the-agentic-loop)
+- [Shape Decomposition & Planner Intelligence](#shape-decomposition--planner-intelligence)
 - [Skill Learning Pipeline](#skill-learning-pipeline)
-- [Skill System](#skill-system)
 - [Coordinate System & Executors](#coordinate-system--executors)
 - [Project Structure](#project-structure)
 - [Configuration Reference](#configuration-reference)
-- [API & Tool Reference](#api--tool-reference)
-- [Error Handling & Recovery](#error-handling--recovery)
-- [Testing](#testing)
+- [Known Limitations](#known-limitations)
+- [Future Work — Stronger Models](#future-work--stronger-models)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -31,7 +31,7 @@ A multi-agent system that autonomously operates an Ubuntu Linux desktop to perfo
 
 This project demonstrates a **general-purpose computer use agent** that can:
 
-1. **Design 3D parts in FreeCAD** — The CAD agent sees the FreeCAD GUI through screenshots, clicks menus, draws sketches, applies constraints, and performs Part Design operations (Pad, Pocket, Fillet, etc.) just like a human would.
+1. **Design 3D parts in FreeCAD** — The CAD agent sees the FreeCAD GUI through screenshots, clicks menus, draws sketches, applies constraints, and performs Part Design operations (Pad, Pocket, Thickness, Fillet, etc.) just like a human would.
 
 2. **Research information online** — The Research agent opens Google Chrome via Playwright, searches the web, reads pages, and extracts structured data with confidence scores and source URLs.
 
@@ -39,18 +39,22 @@ This project demonstrates a **general-purpose computer use agent** that can:
 
 4. **Chain agents together** — The Planner can route a request like *"Make a phone holder for a bicycle"* through Research (find handlebar/phone dimensions) → Documentation (save report) → CAD (build the 3D model with real dimensions).
 
-5. **Learn from YouTube tutorials** — The Skill Learning Pipeline processes FreeCAD tutorial videos into structured YAML skill files that teach the agent new CAD techniques.
+### Design Philosophy
+
+Through extensive testing, we discovered that **less instruction = better performance** with vision-based computer use models. The CAD agent uses a minimal system instruction (~130 lines) that teaches basic desktop navigation and FreeCAD menu usage. All task-specific intelligence comes from the **Planner**, which generates detailed action plans with step-by-step workflows tailored to each shape.
+
+This "minimal instruction + smart planning" approach outperforms longer, more detailed system prompts because the model can focus on what it sees rather than reconciling conflicting instructions.
 
 ### Key Technologies
 
 | Component | Technology |
 |-----------|-----------|
-| Vision Model | Google Gemini 3 Flash Preview (`gemini-3-flash-preview`) |
+| Vision Model (Computer Use) | Google Gemini 3 Flash Preview (`gemini-3-flash-preview`) |
+| Planning Model (Text-only) | Google Gemini 3.1 Pro Preview (`gemini-3.1-pro-preview`) |
 | Desktop Control | xdotool (X11 input automation) |
 | Screenshots | scrot + PIL (resize to 1440x900) |
 | Browser Control | Playwright (Chromium) |
 | CAD Application | FreeCAD 1.0 |
-| Video Processing | OpenCV, yt-dlp, Whisper ASR |
 | Document Generation | fpdf2 (PDF), python-docx (Word) |
 | VM Environment | Ubuntu Linux, XFCE desktop, X11 display server |
 
@@ -59,70 +63,119 @@ This project demonstrates a **general-purpose computer use agent** that can:
 ## System Architecture
 
 ```
-                          ┌──────────────┐
-                          │   main.py    │
-                          │  (CLI/REPL)  │
-                          └──────┬───────┘
-                                 │ user request
-                                 ▼
-                          ┌──────────────┐
-                          │   Planner    │  ← Uses Gemini to classify task
-                          │  (Router)    │    and extract parameters
-                          └──────┬───────┘
-                     ┌───────────┼───────────┐
-                     ▼           ▼           ▼
-              ┌────────┐  ┌──────────┐  ┌────────────────┐
-              │  CAD   │  │ Research │  │ Research → CAD  │
-              │ Agent  │  │  Agent   │  │   (chained)    │
-              └───┬────┘  └────┬─────┘  └────────────────┘
-                  │            │
-                  ▼            ▼
-           ┌───────────┐ ┌────────────┐
-           │  Desktop   │ │  Browser   │
-           │ Executor   │ │ Executor   │
-           │ (xdotool)  │ │(Playwright)│
-           └───────────┘ └────────────┘
-                  │            │
-                  ▼            ▼
-           ┌───────────┐ ┌────────────┐
-           │  FreeCAD   │ │   Chrome   │
-           │   (GUI)    │ │ (headless) │
-           └───────────┘ └────────────┘
+                          +----------------+
+                          |    main.py     |
+                          |   (CLI/REPL)   |
+                          +-------+--------+
+                                  | user request
+                                  v
+                          +----------------+
+                          |    Planner     |  <- Gemini 3.1 Pro (text-only)
+                          | (Router +      |     classifies task, extracts
+                          |  Plan Builder) |     params, generates workflow
+                          +-------+--------+
+                     +------------+------------+
+                     v            v            v
+              +--------+  +----------+  +----------------+
+              |  CAD   |  | Research |  | Research -> CAD |
+              | Agent  |  |  Agent   |  |   (chained)    |
+              +---+----+  +----+-----+  +----------------+
+                  |             |
+                  v             v
+           +-----------+ +------------+
+           |  Desktop  | |  Browser   |
+           | Executor  | | Executor   |
+           | (xdotool) | |(Playwright)|
+           +-----------+ +------------+
+                  |             |
+                  v             v
+           +-----------+ +------------+
+           |  FreeCAD  | |   Chrome   |
+           |   (GUI)   | | (headless) |
+           +-----------+ +------------+
 
-    ┌─────────────────────────────────────────┐
-    │           Shared Agentic Loop           │
-    │  screenshot → Gemini → function calls   │
-    │  → executor → screenshot → repeat...    │
-    └─────────────────────────────────────────┘
+    +-------------------------------------------+
+    |           Shared Agentic Loop             |
+    |  screenshot -> Gemini -> function calls   |
+    |  -> executor -> screenshot -> repeat...   |
+    +-------------------------------------------+
 ```
 
-### Data Flow: Research → CAD Pipeline
+### Data Flow: Research -> CAD Pipeline
 
 ```
 User: "Make a phone holder for a bicycle"
-  │
-  ├─ Planner._plan() → Gemini classifies as "research+cad"
-  │
-  ├─ Phase 1: ResearchAgent
-  │   ├─ Opens Chrome → Googles "bicycle handlebar dimensions"
-  │   ├─ Reads multiple websites, extracts data points
-  │   ├─ Returns: {data_points: [{fact: "handlebar diameter", value: "25.4", unit: "mm"}, ...]}
-  │   └─ DocumentationAgent auto-generates Word + PDF report
-  │
-  ├─ Phase 2: Planner._extract_dimensions()
-  │   └─ Gemini extracts CAD-relevant params: {handlebar_diameter: "25.4mm", phone_width: "73mm"}
-  │
-  └─ Phase 3: CADAgent
-      ├─ Gets enriched description + real dimensions
-      ├─ Opens FreeCAD, creates sketches, applies constraints
-      └─ Builds 3D model using researched specifications
+  |
+  +- Planner._plan() -> Gemini classifies as "research+cad"
+  |
+  +- Phase 1: ResearchAgent
+  |   +- Opens Chrome -> Googles "bicycle handlebar dimensions"
+  |   +- Reads multiple websites, extracts data points
+  |   +- Returns: {data_points: [{fact: "handlebar diameter", value: "25.4", unit: "mm"}, ...]}
+  |   +- DocumentationAgent auto-generates Word + PDF report
+  |
+  +- Phase 2: Planner._extract_dimensions()
+  |   +- Gemini extracts CAD-relevant params: {handlebar_diameter: "25.4mm", phone_width: "73mm"}
+  |
+  +- Phase 3: CADAgent
+      +- Gets enriched description + real dimensions
+      +- Opens FreeCAD, creates sketches, applies constraints
+      +- Builds 3D model using researched specifications
 ```
+
+---
+
+## Demo
+
+The demo showcases the full multi-agent system:
+
+1. **Research Agent** — browses the web in Chrome to find real-world dimensions and specifications
+2. **Documentation Agent** — automatically generates a Word + PDF report from research findings
+3. **CAD Agent** — drives FreeCAD autonomously through pure GUI interaction to build 3D models
+
+### Demo Commands
+
+```bash
+# Research + Documentation: find real-world specs, generate report
+python3 main.py "Research the standard dimensions of an M8 hex bolt"
+
+# Research -> CAD pipeline: research dimensions, then build in FreeCAD
+python3 main.py "Make a phone holder for a bicycle"
+
+# CAD only (dimensions already provided): build directly in FreeCAD
+python3 main.py "Make a simple box for storing items 25x25mm"
+
+# CAD only: cylinder with hole
+python3 main.py "Make a cylinder with a 30mm diameter hole through the center"
+```
+
+### What to Expect
+
+**Research tasks:**
+1. The Planner routes to the Research agent
+2. Chrome opens, the agent searches Google, reads multiple pages
+3. Structured data points are extracted with confidence scores and sources
+4. The Documentation agent automatically generates Word (.docx) and PDF reports in `outputs/research_results/`
+
+**CAD tasks:**
+1. The Planner classifies the request and extracts dimensions
+2. FreeCAD opens (or the agent opens it via the Applications menu)
+3. The agent creates a new Body, enters the Sketcher, draws geometry
+4. Constrains dimensions, closes the sketch, applies Pad/Pocket/Thickness
+5. Calls `task_complete()` when finished
+
+**Chained tasks (Research -> CAD):**
+1. The Planner detects missing dimensions and routes to `research+cad`
+2. Research agent finds real-world specs (e.g., handlebar diameter, phone sizes)
+3. Documentation agent saves the report
+4. Planner extracts CAD-relevant dimensions from research data
+5. CAD agent builds the model using researched specifications
 
 ---
 
 ## VM Environment Setup
 
-The agent runs on an **Ubuntu Linux virtual machine** with specific display requirements for the Gemini Computer Use model. This section covers everything you need to set up the VM from scratch.
+The agent runs on an **Ubuntu Linux virtual machine** with specific display requirements for the Gemini Computer Use model.
 
 ### VM Requirements
 
@@ -190,9 +243,6 @@ sudo apt install -y chromium-browser
 
 # FreeCAD 1.0
 sudo apt install -y freecad
-# Or install from PPA for latest version:
-# sudo add-apt-repository ppa:freecad-maintainers/freecad-stable
-# sudo apt update && sudo apt install freecad
 
 # FFmpeg (for video pipeline)
 sudo apt install -y ffmpeg
@@ -217,15 +267,13 @@ If you change the VM resolution, update these values in `core/settings.py`:
 
 ```python
 # Actual VM screen dimensions
-SCREEN_WIDTH = 1280    # ← Change to match your VM
-SCREEN_HEIGHT = 800    # ← Change to match your VM
+SCREEN_WIDTH = 1280    # <- Change to match your VM
+SCREEN_HEIGHT = 800    # <- Change to match your VM
 
 # Model screenshot dimensions (keep at 1440x900 for best results)
 MODEL_SCREEN_WIDTH = 1440
 MODEL_SCREEN_HEIGHT = 900
 ```
-
-The system automatically resizes screenshots from VM resolution to model resolution using PIL. Both 1280x800 and 1440x900 are 16:10 aspect ratio, so no distortion occurs.
 
 ---
 
@@ -252,7 +300,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**Dependencies:**
+**Key Dependencies:**
 
 | Package | Purpose |
 |---------|---------|
@@ -262,11 +310,7 @@ pip install -r requirements.txt
 | `playwright` | Browser automation for Research agent |
 | `fpdf2` | PDF report generation |
 | `python-docx` | Word document generation |
-| `Pillow` | Screenshot resizing (1280x800 → 1440x900) |
-| `youtube-transcript-api` | YouTube subtitle extraction |
-| `yt-dlp` | YouTube video downloading |
-| `opencv-python` | Keyframe extraction (MOG2 background subtraction) |
-| `openai-whisper` | Speech-to-text fallback for videos without subtitles |
+| `Pillow` | Screenshot resizing (1280x800 -> 1440x900) |
 
 ### 4. Install Playwright Browsers
 
@@ -274,7 +318,7 @@ pip install -r requirements.txt
 python -m playwright install chromium
 ```
 
-### 5. Set Up Gemini API Key
+### 5. Set Up API Key
 
 ```bash
 export GEMINI_API_KEY="your-google-gemini-api-key"
@@ -288,7 +332,7 @@ Get your API key from [Google AI Studio](https://aistudio.google.com/apikey).
 ### 6. Verify Installation
 
 ```bash
-# Test executor (works on any OS — no xdotool needed)
+# Test executor (works on any OS -- no xdotool needed)
 python test_executor.py
 
 # Test research agent (needs API key + Playwright)
@@ -308,39 +352,25 @@ python main.py
 This opens an interactive REPL where you can type requests:
 
 ```
-Agentic Planner — type a request or 'quit' to exit
+Agentic Planner -- type a request or 'quit' to exit
 
 >>> Create a 50mm tall cylinder with radius 15mm
 >>> Research M6 bolt dimensions
 >>> Design a phone holder for a bicycle handlebar
->>> Open FreeCAD and create a new Part Design body
 >>> quit
 ```
 
 ### Direct CLI Mode
 
 ```bash
-# CAD task (dimensions provided → CAD agent directly)
+# CAD task (dimensions provided -> routes to CAD agent directly)
 python main.py "Create a 30mm cube in FreeCAD"
 
-# Research task (information lookup → Research agent)
+# Research task (information lookup -> routes to Research agent)
 python main.py "What are the standard dimensions of an M8 hex bolt?"
 
-# Design task without dimensions (→ Research + CAD pipeline)
+# Design task without dimensions (-> Research + CAD pipeline)
 python main.py "Make a phone holder for a bicycle"
-```
-
-### Run Individual Agents
-
-```bash
-# Research agent with custom query
-python test_research.py --query "M10 bolt head diameter and thread pitch"
-
-# Research agent with more turns
-python test_research.py --query "bicycle handlebar standards" --max-turns 30
-
-# Parallel research (multiple browsers)
-python test_research.py --parallel
 ```
 
 ---
@@ -356,28 +386,27 @@ The CAD agent drives FreeCAD through the desktop GUI using vision-based interact
 **Capabilities:**
 - Create 3D parts from descriptions and dimensions
 - Draw 2D sketches with geometry and constraints
-- Apply Part Design operations (Pad, Pocket, Fillet, Chamfer, etc.)
+- Apply Part Design operations (Pad, Pocket, Thickness, Fillet, Chamfer)
 - Navigate FreeCAD menus and dialogs
 - Handle error recovery (undo mistakes, close unexpected dialogs)
 
 **Key Design Decisions:**
 - **Menu-driven interaction**: The agent is instructed to ALWAYS use FreeCAD's menu bar (large text targets) instead of tiny toolbar icons (~24px). This dramatically improves click accuracy.
-- **Two-click workflows**: Detailed instructions for FreeCAD's sketch tools (Rectangle: click corner 1 → click corner 2; Circle: click center → click radius point).
-- **Constraint workflow**: After drawing geometry, immediately constrain dimensions via Sketch → Sketcher constraints → type value with "mm" units.
-- **Error recovery**: Ctrl+Z for undo, Escape to cancel tools, Sketch → Close sketch to exit sketcher. Never use the Delete key.
+- **Minimal system instruction**: Only ~130 lines of base desktop navigation. All FreeCAD-specific intelligence comes from the Planner's action plan.
+- **Thickness over Pocket for hollowing**: For hollow shapes (boxes, trays, U-channels), the Planner generates workflows using the Thickness tool (select face -> one click) rather than Pocket (sketch on face -> draw rectangle -> constrain -> pocket). Thickness completes in ~24 turns; Pocket regularly fails at 65+ turns.
 
 **Configuration:**
 - `max_turns`: 120 (maximum screenshot-action cycles before stopping)
-- System instruction: Base desktop instruction + CAD-specific addendum (167 lines of FreeCAD guidance)
+- Model: `gemini-3-flash-preview` (via Computer Use API)
 
 **How It Works:**
 
 ```
-1. Planner creates a Task with description + dimensions
+1. Planner creates a Task with description + dimensions + step-by-step workflow
 2. CAD agent cleans FreeCAD recovery files (prevents recovery dialog)
-3. Builds prompt: task description + dimensions + tutorial tips + demo images
-4. Runs agentic loop: screenshot → Gemini → function calls → execute → repeat
-5. Agent calls task_complete() when done, or hits max_turns
+3. Builds prompt from task description and dimensions
+4. Runs agentic loop: screenshot -> Gemini -> function calls -> execute -> repeat
+5. Agent calls task_complete() when done, or stops at max_turns
 ```
 
 ### Research Agent
@@ -411,24 +440,6 @@ The Research agent browses the web using a Playwright-controlled Chrome browser.
 }
 ```
 
-**Modes:**
-
-| Mode | Description |
-|------|-------------|
-| Single | One browser, sequential page visits (default) |
-| Parallel | Multiple browsers, each researching a sub-question concurrently |
-
-**How It Works:**
-
-```
-1. Uses Gemini to generate a research plan (sub-questions to investigate)
-2. Opens Chrome via Playwright to Google.com
-3. Agentic loop: screenshot → Gemini → browser actions (click, type, scroll)
-4. Model calls report_findings() when it has enough data
-5. Results saved as JSON to outputs/research_results/
-6. DocumentationAgent automatically generates Word + PDF report
-```
-
 ### Documentation Agent
 
 **File:** `agents/documentation_agent.py`
@@ -439,21 +450,13 @@ Converts raw research JSON into professionally formatted documents. Automaticall
 - **Word Document (.docx)**: Full report with headers, tables, styled text, citations
 - **PDF Document (.pdf)**: Matching PDF with tables and formatted sections
 
-**Features:**
-- Executive summary generated by Gemini from raw data points
-- Data tables with fact/value/unit/source columns
-- Source list with clickable URLs
-- Confidence assessment section
-- Knowledge gaps section
-- Auto-installs fpdf2 and python-docx if missing
-
 **Output Location:** `outputs/research_results/`
 
 ---
 
 ## Multi-Agent Workflow
 
-The Planner (`core/agentic_planner.py`) orchestrates multi-agent workflows. It uses Gemini to classify incoming requests and route them to the appropriate agent(s).
+The Planner (`core/agentic_planner.py`) orchestrates multi-agent workflows. It uses Gemini 3.1 Pro (text-only model) to classify incoming requests and route them to the appropriate agent(s).
 
 ### Routing Logic
 
@@ -464,23 +467,23 @@ The Planner (`core/agentic_planner.py`) orchestrates multi-agent workflows. It u
 | Design without dimensions | `research+cad` | "Make a phone holder for a bicycle" |
 | Desktop operation | `cad` only | "Open FreeCAD and create a new body" |
 
-### Research → CAD Pipeline
+### Research -> CAD Pipeline
 
 When the Planner detects a design task without specific dimensions:
 
 1. **Classify**: Gemini reads the request and returns `AGENT: research+cad`
 2. **Research Phase**: ResearchAgent browses the web, collects data points
-3. **Quality Gate**: Planner checks if research produced useful data (data_points exist, confidence not "low")
-4. **Dimension Extraction**: Gemini reads research data and extracts CAD-relevant dimensions as `key=value` pairs
+3. **Quality Gate**: Planner checks if research produced useful data
+4. **Dimension Extraction**: Gemini reads research data and extracts CAD-relevant dimensions
 5. **CAD Phase**: CADAgent receives enriched description + extracted dimensions
-6. **Report**: Results saved to `outputs/research_results/`
+6. **Report**: Research results saved to `outputs/research_results/`
 
 ### Fallback Routing
 
 If the Gemini API is unavailable for planning, a keyword-based fallback activates:
-- "research", "look up", "what is", "specifications" → `research`
-- "design", "make", "build", "create" (without mm/numbers) → `research+cad`
-- Everything else → `cad` (default to desktop interaction)
+- "research", "look up", "what is", "specifications" -> `research`
+- "design", "make", "build", "create" (without mm/numbers) -> `research+cad`
+- Everything else -> `cad` (default to desktop interaction)
 
 ---
 
@@ -491,16 +494,16 @@ If the Gemini API is unavailable for planning, a keyword-based fallback activate
 The agentic loop is the core engine shared by all agents. It implements a multi-turn cycle:
 
 ```
-┌──────────────────────────────────────────────┐
-│              Agentic Loop Cycle               │
-│                                               │
-│  1. Capture screenshot (scrot → PNG bytes)    │
-│  2. Send to Gemini (screenshot + history)     │
-│  3. Gemini returns function calls             │
-│  4. Execute function calls via Executor       │
-│  5. Append results to conversation history    │
-│  6. Repeat until task_complete or max_turns   │
-└──────────────────────────────────────────────┘
++----------------------------------------------+
+|              Agentic Loop Cycle               |
+|                                               |
+|  1. Capture screenshot (scrot -> PNG bytes)   |
+|  2. Send to Gemini (screenshot + history)     |
+|  3. Gemini returns function calls             |
+|  4. Execute function calls via Executor       |
+|  5. Append results to conversation history    |
+|  6. Repeat until task_complete or max_turns   |
++----------------------------------------------+
 ```
 
 ### Gemini Computer Use Integration
@@ -511,33 +514,66 @@ The loop uses Gemini's **Computer Use** tool, which allows the model to:
 - Use a normalized 0-1000 coordinate grid for all mouse actions
 - Reason visually about UI state and plan next actions
 
-### Conversation History Management
-
-The loop maintains a strict `user → model → user → model` alternation in the conversation history. This is critical because:
-
-- **Gemini 3 requires strict role alternation** — consecutive messages from the same role cause 400 INVALID_ARGUMENT errors
-- **Every function call needs a matching response** — orphaned function calls in history break the API
-- **Thought signatures** — Gemini 3 model Content includes internal thought signatures that cannot be fabricated
-
 ### Error Recovery Mechanisms
 
 | Scenario | Recovery |
 |----------|----------|
-| 400 INVALID_ARGUMENT | Reset history to initial prompt + fresh screenshot (one attempt) |
-| Empty model response | Update screenshot in last user Content in-place, retry |
-| `candidate.content` is None | Treat as empty response, update screenshot, retry |
+| 400 INVALID_ARGUMENT | Reset history to initial prompt + fresh screenshot |
+| Empty model response | Update screenshot in-place, retry |
 | Malformed function calls | Pop orphaned model content, update screenshot |
-| Stuck (same screenshot repeated) | Inject warning message into existing user Content |
+| Stuck (same screenshot repeated) | Inject warning message |
 | Max empty retries (3) | Return "empty_responses" status |
 | Max consecutive errors (5) | Return "api_error" status |
 | Max turns reached | Return "max_turns" status |
 
-### Key Implementation Details
+---
 
-- **Screenshot function**: Pluggable — `capture_desktop_screenshot()` for CAD, browser screenshot for Research
-- **Custom declarations**: Additional `FunctionDeclaration` objects beyond Computer Use (e.g., `right_click_at`, `task_complete`, `report_findings`)
-- **History reset**: On 400 errors, history is completely reset to `[initial_prompt + fresh_screenshot]` rather than trimmed (trimming breaks function call/response pairing)
-- **In-place updates**: When retrying after empty responses, the screenshot in the last user message is replaced rather than creating new history entries (prevents role alternation violations)
+## Shape Decomposition & Planner Intelligence
+
+The Planner does more than route requests — it generates **detailed action plans** tailored to each shape type. This is critical because the vision model (Gemini Flash) works best with clear, step-by-step instructions.
+
+### How the Planner Builds CAD Plans
+
+1. **Shape Classification**: Gemini 3.1 Pro analyzes the user request and identifies the shape type (box, cylinder, L-bracket, U-channel, etc.)
+2. **Dimension Extraction**: Pulls out all numeric dimensions and assigns semantic meaning
+3. **Workflow Generation**: Creates a step-by-step FreeCAD workflow specific to that shape
+4. **Decomposition**: Complex shapes are broken into sequences of simple operations
+
+### Shape Decomposition Examples
+
+**L-Bracket (50x30x5mm):**
+```
+Step 1: Create body -> Sketch on XY plane -> Rectangle 50x30mm -> Close -> Pad 5mm
+Step 2: Sketch on top face -> Rectangle for cutout -> Close -> Pocket (cut away material)
+Result: L-shaped bracket from two operations on a single block
+```
+
+**U-Channel / Tray (50x30x5mm walls):**
+```
+Step 1: Create body -> Sketch on XY plane -> Rectangle 50x30mm -> Close -> Pad 30mm
+Step 2: Click the top face -> Thickness tool -> Set to 5mm -> OK
+Result: Open-top U-channel with 5mm thick walls
+```
+
+**Hollow Box (25x25mm):**
+```
+Step 1: Sketch rectangle -> Pad to height -> Click top face -> Thickness tool -> OK
+Result: Storage box in ~24 turns
+```
+
+### Why Thickness Over Pocket
+
+For hollow shapes, we discovered that **Thickness** (one-click face hollowing) massively outperforms **Pocket** (sketch-on-face workflow):
+
+| Approach | Steps | Turns | Success Rate |
+|----------|-------|-------|-------------|
+| Thickness | Select face -> Thickness tool -> set value -> OK | ~24 | High |
+| Pocket | Sketch on face -> draw rectangle -> constrain all edges -> close -> pocket | 65+ | Low |
+
+The Pocket approach fails because the model struggles with:
+- Creating a sketch on an existing face (coordinate precision)
+- Drawing a properly offset rectangle inside the face
+- Constraining all four edges with correct offsets
 
 ---
 
@@ -545,60 +581,59 @@ The loop maintains a strict `user → model → user → model` alternation in t
 
 **Directory:** `pipeline/`
 
-The Skill Learning Pipeline converts YouTube FreeCAD tutorial videos into structured YAML skill files that the agent can use as reference during CAD tasks.
+The Skill Learning Pipeline converts YouTube FreeCAD tutorial videos into structured YAML skill files. These skills provide the agent with FreeCAD knowledge, tips, troubleshooting guidance, and visual demonstrations.
 
 ### Pipeline Stages
 
 ```
 YouTube URL
-    │
-    ▼
-┌─────────────────────────────────────────────┐
-│ Stage 1: CRAWL                              │
-│ Download video + subtitles via yt-dlp       │
-│ Format: h264 ≤720p (AV1 not supported)      │
-│ Output: pipeline/downloads/<video_id>/      │
-└───────────────────┬─────────────────────────┘
-                    ▼
-┌─────────────────────────────────────────────┐
-│ Stage 2: TRANSCRIBE                         │
-│ Extract subtitles from VTT files            │
-│ Fallback: Whisper ASR (speech-to-text)      │
-│ Output: segments with timestamps            │
-└───────────────────┬─────────────────────────┘
-                    ▼
-┌─────────────────────────────────────────────┐
-│ Stage 3: KEYFRAMES                          │
-│ OpenCV MOG2 background subtraction          │
-│ Detect GUI state changes (menus, dialogs)   │
-│ Mask FreeCAD 3D viewport (ignore rotation)  │
-│ Output: numbered PNG keyframes              │
-│ Max duration: 1200s (20 minutes)            │
-└───────────────────┬─────────────────────────┘
-                    ▼
-┌─────────────────────────────────────────────┐
-│ Stage 4: LABEL                              │
-│ Send consecutive keyframe pairs to Gemini   │
-│ + transcript context for that time range    │
-│ Ask: "What action happened between frames?" │
-│ Output: labeled action descriptions         │
-└───────────────────┬─────────────────────────┘
-                    ▼
-┌─────────────────────────────────────────────┐
-│ Stage 5: FILTER                             │
-│ Gemini Vision scores each action 0-5        │
-│ Filter out low-quality actions (< 3)        │
-│ Output: filtered action list                │
-└───────────────────┬─────────────────────────┘
-                    ▼
-┌─────────────────────────────────────────────┐
-│ Stage 6: BUILD                              │
-│ Assemble into YAML skill file + PNG dir     │
-│ Update skills/freecad/demos/index.yaml      │
-│ Output: skills/freecad/demos/<name>/        │
-│         ├── skill.yaml                      │
-│         └── *.png (keyframe screenshots)    │
-└─────────────────────────────────────────────┘
+    |
+    v
++---------------------------------------------+
+| Stage 1: CRAWL                              |
+| Download video + subtitles via yt-dlp       |
+| Format: h264 <=720p (AV1 not supported)    |
+| Output: pipeline/downloads/<video_id>/      |
++---------------------+-----------------------+
+                      v
++---------------------------------------------+
+| Stage 2: TRANSCRIBE                         |
+| Extract subtitles from VTT files            |
+| Fallback: Whisper ASR (speech-to-text)      |
+| Output: segments with timestamps            |
++---------------------+-----------------------+
+                      v
++---------------------------------------------+
+| Stage 3: KEYFRAMES                          |
+| OpenCV MOG2 background subtraction          |
+| Detect GUI state changes (menus, dialogs)   |
+| Mask FreeCAD 3D viewport (ignore rotation)  |
+| Output: numbered PNG keyframes              |
++---------------------+-----------------------+
+                      v
++---------------------------------------------+
+| Stage 4: LABEL                              |
+| Send consecutive keyframe pairs to Gemini   |
+| + transcript context for that time range    |
+| Ask: "What action happened between frames?" |
+| Output: labeled action descriptions         |
++---------------------+-----------------------+
+                      v
++---------------------------------------------+
+| Stage 5: FILTER                             |
+| Gemini Vision scores each action 0-5        |
+| Filter out low-quality actions (< 3)        |
+| Output: filtered action list                |
++---------------------+-----------------------+
+                      v
++---------------------------------------------+
+| Stage 6: BUILD                              |
+| Assemble into YAML skill file + PNG dir     |
+| Update skills/freecad/demos/index.yaml      |
+| Output: skills/freecad/demos/<name>/        |
+|         +-- skill.yaml                      |
+|         +-- *.png (keyframe screenshots)    |
++---------------------------------------------+
 ```
 
 ### Running the Pipeline
@@ -625,82 +660,20 @@ python -m pipeline.run_pipeline --rebuild-index
 | `min_score` | 3 | Minimum quality score (0-5) for filtering |
 | `api_delay` | 1.0s | Delay between Gemini API calls |
 | `max_duration_s` | 1200 | Maximum video length (20 minutes) |
-| Video format | h264, ≤720p | AV1 codec not supported on most VMs |
-
-### Important Notes
-
-- **Video codec**: The pipeline forces h264 encoding (`vcodec^=avc1`) because most VMs lack AV1 hardware decoding
-- **API costs**: The labeling and filtering stages make many Gemini Vision API calls (one per keyframe pair). Budget accordingly.
-- **Whisper fallback**: If the video has no subtitles, Whisper ASR runs locally. This requires ~1GB of model download on first use.
-- **Delete old downloads**: If a video was previously downloaded with wrong settings, delete the folder: `rm -rf pipeline/downloads/<video_id>/`
-
----
-
-## Skill System
-
-**Directory:** `skills/freecad/`
-
-Skills are YAML files that provide the CAD agent with FreeCAD knowledge and demonstrations. They are loaded at task start and injected into the agent's prompt.
+| Video format | h264, <=720p | AV1 codec not supported on most VMs |
 
 ### Skill Types
 
-| Type | Purpose | Loaded When |
-|------|---------|-------------|
-| `tutorial` | General FreeCAD workflows with tips and troubleshooting | Always (injected as tips reference) |
-| `knowledge` | Specific operation details (Pad, Sketch, constraints) | At agent startup |
-| `demonstration` | Visual examples from processed tutorials (YAML + PNGs) | Matched to task via keyword retrieval |
-| `enrichments` | Additional tips/troubleshooting from tutorials | Merged with tutorial tips |
+| Type | Purpose |
+|------|---------|
+| `tutorial` | General FreeCAD workflows with tips and troubleshooting |
+| `knowledge` | Specific operation details (Pad, Sketch, constraints) |
+| `demonstration` | Visual examples from processed tutorials (YAML + PNGs) |
+| `enrichments` | Additional tips/troubleshooting from tutorials |
 
-### Available Skills
+### Current Status
 
-| Skill File | Description |
-|------------|-------------|
-| `basic_operations.yaml` | Pad, Chamfer, Fillet, Revolution, Pocket, Mirror, Pattern |
-| `sketcher_tools.yaml` | Sketch geometry (Rectangle, Circle, Line) and constraints |
-| `sketcher_advanced.yaml` | Polylines, arcs, tangency, construction geometry |
-| `part_design_ops.yaml` | Body/Sketch management, Pad, Pocket, dress-up features |
-| `part_design_parametric.yaml` | VarSet parametric variables, hole wizard |
-| `setup.yaml` | FreeCAD launch, workbench selection, document creation |
-| `setup_extended.yaml` | Add-on manager, community workbenches |
-| `assembly_basics.yaml` | Assembly operations for multi-part designs |
-| `bicycle_stem.yaml` | Complete parametric bicycle stem tutorial |
-| `enrichments_from_tutorial.yaml` | Extra tips from tutorial processing |
-
-### Skill Retrieval
-
-When the CAD agent receives a task, it searches for relevant demonstration skills using keyword matching:
-
-1. Task description is tokenized and stopwords removed
-2. Each demo skill's tags + description are compared
-3. Best match is loaded with up to 3 screenshot images
-4. Screenshots are sent to Gemini as visual reference
-
-```python
-# Example: Task "Create a cylinder" matches demo with tags ["cylinder", "pad", "sketch"]
-from core.skill_retrieval import find_relevant_demo, get_demo_screenshots
-demo = find_relevant_demo("Create a cylinder with 10mm radius")
-images = get_demo_screenshots(demo, max_screenshots=3)
-```
-
-### Creating Custom Skills
-
-Create a YAML file in `skills/freecad/`:
-
-```yaml
-name: my_custom_skill
-type: knowledge
-description: How to create a specific part
-operations:
-  - name: create_feature
-    steps:
-      - "Step 1: Do this"
-      - "Step 2: Do that"
-tips:
-  - "Useful tip about this operation"
-troubleshooting:
-  - problem: "Common issue"
-    solution: "How to fix it"
-```
+The skill system is currently **disabled in the CAD agent** because testing showed that the minimal-instruction approach (short system prompt + detailed Planner action plans) outperforms injecting large skill references into the prompt. However, the pipeline and skill infrastructure remain fully functional and will become increasingly valuable as stronger models (capable of processing longer contexts without confusion) become available for Computer Use.
 
 ---
 
@@ -711,15 +684,14 @@ troubleshooting:
 The Gemini Computer Use model uses a **normalized 0-1000 grid** for all coordinates:
 
 ```
-(0, 0) ──────────────────── (999, 0)
-  │                              │
-  │     Normalized 1000x1000     │
-  │          Grid                │
-  │                              │
-  │        (500, 500)            │
-  │         = center             │
-  │                              │
-(0, 999) ────────────────── (999, 999)
+(0, 0) -------------------- (999, 0)
+  |                              |
+  |     Normalized 1000x1000     |
+  |          Grid                |
+  |        (500, 500)            |
+  |         = center             |
+  |                              |
+(0, 999) ------------------ (999, 999)
 ```
 
 These are converted to actual screen pixels by the executor:
@@ -733,7 +705,7 @@ screen_y = int(normalized_y / 1000 * SCREEN_HEIGHT)   # e.g., 500/1000 * 800  = 
 
 **File:** `core/desktop_executor.py`
 
-Controls the Ubuntu desktop via `xdotool` subprocess calls. Handles coordinate denormalization and all mouse/keyboard operations.
+Controls the Ubuntu desktop via `xdotool` subprocess calls.
 
 **Supported Functions:**
 
@@ -744,22 +716,17 @@ Controls the Ubuntu desktop via `xdotool` subprocess calls. Handles coordinate d
 | `type_text_at(x, y, text)` | Click field, optionally clear, type text |
 | `key_combination(keys)` | Press key combo (e.g., "ctrl+z", "escape") |
 | `scroll_at(x, y, direction, magnitude)` | Scroll at position |
-| `scroll_document(direction)` | Scroll at screen center |
 | `drag_and_drop(x, y, dest_x, dest_y)` | Drag from one point to another |
 | `right_click_at(x, y)` | Right-click (custom function) |
 | `double_click_at(x, y)` | Double-click (custom function) |
 | `wait_5_seconds()` | Wait for UI to settle |
 | `task_complete(summary)` | Signal task completion |
 
-**Key normalization**: The executor also normalizes X11 key names (e.g., `delete` → `Delete`, `escape` → `Escape`) because xdotool silently ignores lowercase key names.
-
 ### Browser Executor
 
 **File:** `core/browser_executor.py`
 
-Controls a Playwright Chromium browser for the Research agent. Same Executor interface but translates function calls to browser actions (click, type, navigate, screenshot).
-
-**Browser viewport**: 1440x900 (matches Gemini's recommended resolution directly).
+Controls a Playwright Chromium browser for the Research agent. Same Executor interface but translates function calls to browser actions.
 
 ---
 
@@ -767,64 +734,48 @@ Controls a Playwright Chromium browser for the Research agent. Same Executor int
 
 ```
 General_Computer_Use_Agent-/
-│
-├── main.py                      # Entry point (CLI + interactive REPL)
-├── requirements.txt             # Python dependencies
-├── config.py                    # (Reserved for future configuration)
-├── test_executor.py             # Desktop executor unit tests
-├── test_research.py             # Research agent integration test CLI
-│
-├── agents/                      # Agent implementations
-│   ├── __init__.py
-│   ├── registry.py              # @register decorator + get_agent() factory
-│   ├── cad_agent.py             # FreeCAD CAD design agent
-│   ├── research_agent.py        # Web research agent (Chrome + Playwright)
-│   ├── documentation_agent.py   # Word + PDF report generator
-│   ├── skill_translator.py      # YouTube transcript → YAML skill converter
-│   ├── testing_agent.py         # (Reserved for testing agent)
-│   └── cards/
-│       └── cad_agent.yaml       # Agent card (A2A-style metadata)
-│
-├── core/                        # Shared infrastructure
-│   ├── agentic_loop.py          # Multi-turn vision loop (the engine)
-│   ├── agentic_planner.py       # Task router + multi-agent orchestration
-│   ├── executor.py              # Abstract Executor base class
-│   ├── desktop_executor.py      # xdotool-based desktop executor
-│   ├── browser_executor.py      # Playwright-based browser executor
-│   ├── screenshot.py            # scrot capture + PIL resize
-│   ├── settings.py              # Global config (resolution, model, delays)
-│   ├── models.py                # Task, TaskStatus, skill loaders
-│   ├── custom_tools.py          # Extra Gemini FunctionDeclarations
-│   ├── freecad_functions.py     # Low-level xdotool wrappers (click, scroll)
-│   └── skill_retrieval.py       # Keyword-based demo skill matching
-│
-├── pipeline/                    # YouTube → Skill learning pipeline
-│   ├── __init__.py
-│   ├── run_pipeline.py          # Pipeline orchestrator CLI
-│   ├── crawl.py                 # yt-dlp video + subtitle download
-│   ├── transcribe.py            # VTT subtitle extraction / Whisper ASR
-│   ├── extract_keyframes.py     # OpenCV MOG2 keyframe detection
-│   ├── label_actions.py         # Gemini Vision action labeling
-│   ├── filter_quality.py        # Gemini Vision quality scoring
-│   └── build_skills.py          # YAML skill assembly + index update
-│
-├── skills/                      # FreeCAD knowledge base
-│   └── freecad/
-│       ├── *.yaml               # Knowledge + tutorial skill files
-│       ├── seed_tasks.txt       # Seed task descriptions for training
-│       └── demos/               # Generated demonstration skills (YAML + PNG)
-│
-├── scripts/
-│   ├── deploy.sh                # VM deployment script
-│   └── run_agent.py             # (Reserved)
-│
-├── server/                      # (Reserved for web interface)
-│   ├── app.py
-│   └── templates/
-│       └── index.html
-│
-└── outputs/
-    └── research_results/        # Research JSON + Word + PDF reports
+|
++-- main.py                      # Entry point (CLI + interactive REPL)
++-- requirements.txt             # Python dependencies
++-- test_executor.py             # Desktop executor unit tests
++-- test_research.py             # Research agent integration test CLI
+|
++-- agents/                      # Agent implementations
+|   +-- registry.py              # @register decorator + get_agent() factory
+|   +-- cad_agent.py             # FreeCAD CAD design agent
+|   +-- research_agent.py        # Web research agent (Chrome + Playwright)
+|   +-- documentation_agent.py   # Word + PDF report generator
+|
++-- core/                        # Shared infrastructure
+|   +-- agentic_loop.py          # Multi-turn vision loop (Gemini)
+|   +-- agentic_planner.py       # Task router + shape decomposition + workflow generation
+|   +-- claude_loop.py           # Alternative agentic loop (Claude Computer Use, experimental)
+|   +-- executor.py              # Abstract Executor base class
+|   +-- desktop_executor.py      # xdotool-based desktop executor
+|   +-- browser_executor.py      # Playwright-based browser executor
+|   +-- screenshot.py            # scrot capture + PIL resize
+|   +-- settings.py              # Global config (resolution, models, delays)
+|   +-- models.py                # Task, TaskStatus, data models
+|   +-- custom_tools.py          # Extra Gemini FunctionDeclarations
+|   +-- freecad_functions.py     # Low-level xdotool wrappers (click, scroll)
+|   +-- skill_retrieval.py       # Keyword-based demo skill matching
+|
++-- pipeline/                    # YouTube -> Skill learning pipeline
+|   +-- run_pipeline.py          # Pipeline orchestrator CLI
+|   +-- crawl.py                 # yt-dlp video + subtitle download
+|   +-- transcribe.py            # VTT subtitle extraction / Whisper ASR
+|   +-- extract_keyframes.py     # OpenCV MOG2 keyframe detection
+|   +-- label_actions.py         # Gemini Vision action labeling
+|   +-- filter_quality.py        # Gemini Vision quality scoring
+|   +-- build_skills.py          # YAML skill assembly + index update
+|
++-- skills/                      # FreeCAD knowledge base (reference, currently disabled)
+|   +-- freecad/
+|       +-- *.yaml               # Knowledge + tutorial skill files
+|       +-- demos/               # Generated demonstration skills (YAML + PNG)
+|
++-- outputs/
+    +-- research_results/        # Research JSON + Word + PDF reports
 ```
 
 ---
@@ -842,146 +793,76 @@ General_Computer_Use_Agent-/
 | `ACTION_DELAY` | 0.5s | Pause after each executed action |
 | `TYPING_DELAY` | 30ms | Delay between keystrokes (xdotool) |
 | `CLICK_DELAY` | 0.3s | Pause after mouse clicks |
-| `APP_LAUNCH_DELAY` | 3.0s | Pause after launching applications |
-| `SEARCH_TYPE_DELAY` | 1.0s | Pause after typing in launcher |
-| `DEFAULT_MODEL` | `gemini-3-flash-preview` | Gemini model for all agents |
+| `DEFAULT_MODEL` | `gemini-3-flash-preview` | Computer Use model for all agents |
+| `PLANNING_MODEL` | `gemini-3.1-pro-preview` | Text-only model for planning and dimension extraction |
+| `PROVIDER` | `gemini` | Backend provider (`gemini` or `claude`) |
 | `SCREENSHOT_PATH` | `/tmp/agent_screenshot.png` | Temporary screenshot file path |
-
-### Agent-Specific Settings
-
-| Agent | Setting | Value |
-|-------|---------|-------|
-| CAD Agent | `max_turns` | 120 |
-| Research Agent | `max_turns` | Configurable via params (default 20) |
-| Browser Executor | Viewport | 1440x900 |
 
 ### Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GEMINI_API_KEY` | Yes | Google Gemini API key |
+| `AGENT_PROVIDER` | No | Set to `claude` for Claude backend (default: `gemini`) |
+| `ANTHROPIC_API_KEY` | Only for Claude | Anthropic API key (if using Claude provider) |
 | `DISPLAY` | Yes (auto) | X11 display (usually `:0`, set automatically) |
 
 ---
 
-## API & Tool Reference
+## Known Limitations
 
-### Gemini Computer Use Model
+These are limitations discovered through extensive testing with the current best model (`gemini-3-flash-preview`):
 
-The system uses `gemini-3-flash-preview` with the Computer Use tool enabled. The model:
+### Model Limitations
 
-- Receives screenshots as inline PNG images in user messages
-- Returns function calls (click, type, scroll, etc.) with normalized coordinates
-- Maintains conversation history for multi-turn reasoning
-- Includes internal thought signatures in model messages (cannot be fabricated)
+1. **Polyline / multi-point geometry**: Flash cannot reliably use FreeCAD's polyline tool (click series of points to form a shape). It loses track of which point comes next and misclicks. Workaround: decompose into individual lines or use simpler primitives (rectangle, circle).
 
-### Custom Function Declarations
+2. **Sketch-on-face workflows**: Creating a new sketch on an existing 3D face, then drawing constrained geometry on it, is unreliable. The model struggles with the coordinate precision needed to click exactly on a face. Workaround: use Thickness tool instead of Pocket for hollowing.
 
-Beyond the built-in Computer Use functions, the system registers:
+3. **Three-level submenu navigation**: XFCE's `Applications -> Category -> App` menu requires hovering to open submenus. The model sometimes clicks too early or on the wrong item. If the app is already in the taskbar, clicking the taskbar entry is more reliable.
 
-| Function | Defined In | Used By |
-|----------|-----------|---------|
-| `right_click_at(x, y)` | `core/custom_tools.py` | CAD Agent |
-| `double_click_at(x, y)` | `core/custom_tools.py` | CAD Agent |
-| `task_complete(summary)` | `agents/cad_agent.py` | CAD Agent |
-| `report_findings(data)` | `core/agentic_loop.py` | Research Agent |
+4. **Small toolbar icons (~24px)**: Click accuracy drops significantly on small targets. The system instruction mandates using the menu bar (large text targets) instead. This is one of the most impactful design decisions.
 
-### Agent Registry
+5. **Complex multi-step designs (80+ turns)**: Success rate drops for designs requiring many sequential precise operations. Simple shapes (box, cylinder) succeed reliably; complex shapes (L-bracket, detailed assemblies) may need multiple attempts.
 
-```python
-from agents.registry import register, get_agent, list_agents
+6. **Rate limits**: On Gemini's free tier, heavy Computer Use sessions (20-80+ turns of screenshot + vision calls) can exhaust quotas quickly. Rate limits typically reset within 30-60 minutes.
 
-# Register (decorator in agent files)
-@register("cad")
-class CADAgent: ...
+### Architectural Limitations
 
-# Discover
-agents = list_agents()  # ["cad", "research"]
+1. **No undo intelligence**: The agent can press Ctrl+Z but doesn't strategically plan recovery. If it goes down a wrong path for 10+ turns, it may not recover.
 
-# Instantiate
-agent = get_agent("cad", client=client, executor=executor)
-result = agent.execute(task)
-```
+2. **No verification**: The agent doesn't compare the final model against the original spec. It relies on the vision model's judgment of "looks done."
+
+3. **Single-monitor only**: The system assumes a single display. Multi-monitor setups would need coordinate mapping changes.
 
 ---
 
-## Error Handling & Recovery
+## Future Work — Stronger Models
 
-### Gemini API Errors
+The current system is built on `gemini-3-flash-preview`, which is the best available Computer Use model for desktop applications. However, the architecture is designed to scale with model improvements:
 
-| Error | Cause | Recovery |
-|-------|-------|----------|
-| 400 INVALID_ARGUMENT | Broken role alternation, orphaned function calls, or fabricated model content | History reset to initial prompt + fresh screenshot (single attempt) |
-| 429 RESOURCE_EXHAUSTED | API quota exceeded | Caught in loop, logged, retried |
-| 500 Server Error | Gemini backend issue | Retry with backoff |
+### What a Stronger Model (e.g., Gemini 3.1 Pro with CU) Would Unlock
 
-### FreeCAD Errors
+1. **Complex geometry in one shot**: L-brackets, T-brackets, and multi-feature parts currently require shape decomposition by the Planner. A model with better spatial reasoning could handle polylines, sketch-on-face, and multi-step constraint workflows directly.
 
-| Situation | Recovery |
-|-----------|----------|
-| Wrong tool activated | Press Escape, then Ctrl+Z multiple times |
-| Sketch not closing | Use Sketch → Close sketch (menu), not Escape |
-| Recovery dialog on startup | Agent cleans `~/.local/share/FreeCAD/recovery` before each task |
-| Misclicked toolbar icon | Agent instructed to always use menu bar (larger targets) |
-| Stuck in a loop | Stuck detection injects warning after 3 identical screenshots |
+2. **Longer reliable sessions**: Currently, accuracy degrades after ~60-80 turns. A stronger model could maintain precision across 150+ turns, enabling full assemblies and multi-part designs.
 
-### PDF Generation Errors
+3. **Sketch-on-face workflows**: The Pocket approach (sketch on existing face, draw offset rectangle, constrain, pocket) would work reliably, eliminating the need for Thickness workarounds.
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| "Not enough horizontal space" | C0/C1 control characters (0x00-0x1f, 0x7f-0x9f) with no glyphs | `safe()` function strips control characters via regex |
-| Encoding errors | Non-latin-1 characters | `safe()` encodes to latin-1 with replacement |
-| X-position drift | Floating point accumulation in multi_cell | `pdf.set_x(pdf.l_margin)` before every multi_cell() call |
+4. **Reduced Planner complexity**: With a smarter CU model, the Planner could send simpler instructions (just "make a U-channel with 5mm walls") instead of generating step-by-step Thickness workflows. The model itself would know the best approach.
 
----
+5. **Better error recovery**: A stronger model could recognize when it's going down a wrong path and strategically undo multiple steps, rather than continuing to click on incorrect targets.
 
-## Testing
+### Alternative Backend: Claude Computer Use
 
-### Unit Tests
+The codebase includes an experimental Claude Computer Use integration (`core/claude_loop.py`) that can be activated by setting `AGENT_PROVIDER=claude`. Claude uses pixel coordinates directly (no 0-1000 normalization) and has its own computer use tool format. This provides a drop-in alternative backend if Claude's CU capabilities prove stronger for specific tasks.
 
-```bash
-# Test DesktopExecutor (no xdotool needed — validates logic only)
-python test_executor.py
-```
+### Leveraging the Skill Learning Pipeline
 
-This validates:
-- Coordinate denormalization (0-1000 → screen pixels)
-- Function handler lookup
-- Key name normalization (lowercase → X11 keysym)
-
-### Integration Tests
-
-```bash
-# Quick research test (5 turns)
-python test_research.py --quick
-
-# Engineering-focused test
-python test_research.py --engineering
-
-# Custom query with turn limit
-python test_research.py --query "titanium alloy properties" --max-turns 15
-
-# Parallel research mode
-python test_research.py --parallel
-```
-
-### End-to-End Testing
-
-Run on the VM with FreeCAD installed:
-
-```bash
-# Simple CAD task
-python main.py "Create a 30mm cube in FreeCAD"
-
-# Research + CAD pipeline
-python main.py "Design a bracket for an M6 bolt"
-```
-
-Monitor output for:
-- `[Planner]` — routing decisions
-- `[Research Agent]` — data point collection
-- `[CAD Agent]` — FreeCAD interaction
-- `[Agentic Loop]` — turn counts, error recovery
+The [Skill Learning Pipeline](#skill-learning-pipeline) is fully built and functional. With a stronger model, the skills it generates could be:
+- Injected directly into the CAD agent's prompt as reference knowledge
+- Used to auto-generate Planner workflows from tutorial demonstrations
+- Used as training data for fine-tuned models specialized in CAD operations
 
 ---
 
@@ -1021,36 +902,25 @@ rm -rf ~/.FreeCAD/recovery/*
 python -m playwright install chromium
 ```
 
-**Pipeline: "Video too long"**
-- Maximum video duration is 20 minutes (1200 seconds)
-- For longer videos, split them or increase `max_duration_s` in `pipeline/extract_keyframes.py`
-
-**Pipeline: "AV1 codec not supported"**
-- The pipeline forces h264 encoding. If you have an old AV1 download:
-```bash
-rm -rf pipeline/downloads/<video_id>/*.mp4
-# Re-run the pipeline
-```
-
-**PDF: "Not enough horizontal space to render a single character"**
-- This is fixed in the current version. The `safe()` function strips control characters.
-- If it recurs, check for non-latin-1 text in research results.
-
 **CAD agent hits max_turns without finishing**
-- Increase `max_turns` in `agents/cad_agent.py` (default: 120)
 - Complex designs may need 150+ turns
-- Check logs for stuck detection warnings
+- Increase `max_turns` in `agents/cad_agent.py` (default: 120)
+- Consider simplifying the design request or providing more specific dimensions
 
 **400 INVALID_ARGUMENT from Gemini API**
-- This is handled automatically by history reset
+- Handled automatically by history reset in the agentic loop
 - If persistent, check that no code is fabricating model Content objects
-- The agentic loop includes one-shot recovery: reset history and retry
+
+**Rate limit errors (429)**
+- Free tier quotas reset within 30-60 minutes
+- Reduce `max_turns` for testing
+- Consider a paid API tier for heavy usage
 
 ---
 
 ## Authors
 
-- **Louis** — Core framework, desktop executor, CAD agent, agentic loop, skill system
+- **Louis** — Core framework, desktop executor, CAD agent, agentic loop, planner
 - **Emmanuel** — Research agent, browser executor, documentation agent, parallel research
 
 ---

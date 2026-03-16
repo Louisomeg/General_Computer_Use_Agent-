@@ -527,11 +527,15 @@ class Planner:
 - Rectangle shortcut: press G then R (bypasses broken 3-level submenu)
 - Constrain distance shortcut: press K then D (bypasses broken 3-level submenu)
 - Create sketch is under "Sketch" menu, NOT "Part Design" menu
-- Select an edge BEFORE pressing K D to constrain it
-- Constrain BOTH width and height before closing a sketch
+- After drawing a rectangle, press Escape to exit rectangle mode. Do NOT click "Close" in the left panel — that closes the ENTIRE SKETCH, not just the tool.
+- To constrain an edge: click the edge so it turns GREEN, then press K then D. A dialog appears — type the value and press Enter.
+- Constrain BOTH width (horizontal edge) and height (vertical edge) before closing a sketch
+- If K D does not open a dialog, the edge was not selected. Click directly ON the edge line (not near it), confirm it turns green, then try K D again.
+- NEVER click toolbar icons for constraints — they are too small and you will misclick. ALWAYS use K then D.
 - Thickness tool: select a face, then click Thickness in the left panel or Part Design menu. It hollows out a solid block — easiest way to make boxes, trays, and channels
+- To close a finished sketch: use Sketch menu -> Close sketch. Do NOT click "Close" in the left Tasks panel.
 - Use View -> Standard views -> Fit All to re-center the object after major operations
-- Use "Edit" menu -> "Undo" if something goes wrong
+- Use "Edit" menu -> "Undo" if something goes wrong. Do not hesitate to undo multiple times.
 - Call task_complete() when done
 """
 
@@ -683,6 +687,11 @@ class Planner:
             "tray", "drawer", "bin", "hollow",
         ])
 
+        # Detect compartments
+        import re
+        compartment_match = re.search(r"(\d+)\s*compartment", lower)
+        num_compartments = int(compartment_match.group(1)) if compartment_match else 0
+
         parts = [f"## Goal\n{original_request}\n"]
 
         if research_summary:
@@ -692,13 +701,48 @@ class Planner:
         parts.append(f"- Outer: {width} x {depth} x {height} mm")
         if is_hollow:
             parts.append(f"- Wall thickness: {wall} mm")
+        if num_compartments >= 2:
+            parts.append(f"- Compartments: {num_compartments}")
 
         parts.append("")
 
-        if is_hollow:
+        if is_hollow and num_compartments >= 2:
+            # Box with compartments: solid block → pocket compartments from top
+            # Each compartment is a separate pocket — simpler than Thickness + divider
+            compartment_width = (width - (num_compartments + 1) * wall) / num_compartments
+            pocket_depth = height - wall  # leave bottom wall
+
+            parts.append("## Workflow")
+            parts.append(
+                f"Step 1: Create body -> Sketch on XY plane -> "
+                f"G R rectangle -> constrain width (horizontal edge) to {width}mm "
+                f"and height (vertical edge) to {depth}mm -> "
+                f"Close sketch (Sketch menu -> Close sketch) -> Pad {height}mm"
+            )
+
+            for i in range(num_compartments):
+                offset_x = wall + i * (compartment_width + wall)
+                parts.append(
+                    f"Step {i+2}: Click the top face of the block -> "
+                    f"Sketch menu -> New sketch (select the top face) -> "
+                    f"G R rectangle for compartment {i+1} -> "
+                    f"constrain width to {compartment_width:.1f}mm and "
+                    f"height to {depth - 2*wall:.1f}mm -> "
+                    f"Close sketch -> Pocket (Part Design menu -> Pocket) -> "
+                    f"set depth to {pocket_depth:.1f}mm -> OK"
+                )
+
+            parts.append(
+                f"\nResult: Box with {num_compartments} compartments, "
+                f"each ~{compartment_width:.1f}mm wide, "
+                f"{wall}mm walls between them"
+            )
+        elif is_hollow:
             parts.append("## Workflow")
             parts.append("Create body -> Sketch on XY plane -> Rectangle -> "
-                         f"Constrain to {width}x{depth}mm -> Close sketch -> "
+                         f"Constrain width (horizontal edge) to {width}mm "
+                         f"and height (vertical edge) to {depth}mm -> "
+                         f"Close sketch (Sketch menu -> Close sketch) -> "
                          f"Pad {height}mm -> Click top face -> "
                          f"Thickness tool (set to {wall}mm) -> OK")
         else:
