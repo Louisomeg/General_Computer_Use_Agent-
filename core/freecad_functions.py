@@ -147,7 +147,11 @@ def execute_freecad_macro(code: str) -> dict:
             check=True,
         )
         subprocess.run(["xdotool", "key", "Return"], check=True)
-        time.sleep(2.0)  # Give FreeCAD time to execute (increased from 1.0)
+        # Give FreeCAD time to execute.  Complex macros (creating multiple
+        # features, recomputing shapes) can take several seconds.
+        # Scale wait time based on code length as a rough proxy for complexity.
+        wait_time = min(2.0 + len(code) / 500, 8.0)
+        time.sleep(wait_time)
 
         # Read the log file to check for errors
         try:

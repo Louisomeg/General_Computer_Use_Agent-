@@ -552,20 +552,28 @@ class Planner:
 ### Part Design Operations (use menu bar, not toolbar)
 - Pad (extrude): Part Design menu → Pad → set length → OK
 - Pocket (cut into solid): Part Design menu → Pocket → set depth → OK (or "Through All")
-- Hole feature: Click a face → Part Design menu → Hole → set diameter and depth → OK
-  This is the EASIEST way to make bolt holes — much simpler than sketch circle + pocket.
-  For clearance holes: set "Profile" to "None", type the diameter directly.
+- Clearance holes: draw a Circle in a sketch on the target face → Pocket → Through All.
+  This is MORE RELIABLE than PartDesign::Hole for simple clearance holes.
 - Fillet (round edges): Part Design menu → Fillet → click edges to round → set radius → OK
 - Chamfer (angled edges): Part Design menu → Chamfer → click edges → set size → OK
 - Thickness (hollow out): select a face → Part Design menu → Thickness → set wall thickness → OK
   Hollows out a solid block — easiest way to make boxes, trays, and channels.
 - Mirrored: Part Design menu → Mirrored → select plane → OK (duplicates features symmetrically)
 
+### Macro Strategy (execute_freecad_macro)
+- PREFER macros over GUI clicking for geometry — they give exact dimensions.
+- Write ONE SMALL MACRO per feature. Do NOT put everything in one macro.
+  If line 5 fails, lines 6-20 silently fail too and you won't know.
+- After each macro, CHECK THE SCREENSHOT before running the next one.
+- NEVER hardcode face names like Face6 or Face12. Find faces by position:
+  top_face = max(body.Shape.Faces, key=lambda f: f.CenterOfMass.z)
+  front_face = max(body.Shape.Faces, key=lambda f: f.CenterOfMass.y)
+- Use body.Tip as the AttachmentSupport object (always points to latest feature).
+- For holes: use Circle + Pocket ThroughAll (not PartDesign::Hole).
+
 ### General Tips
 - Use View → Standard views → Fit All to re-center the object after major operations
 - Use "Edit" menu → "Undo" if something goes wrong. Do not hesitate to undo multiple times.
-- For bolt holes, PREFER the Hole feature over manual circle+pocket — it handles diameter precisely.
-- You can also use execute_freecad_macro() to run Python code in FreeCAD for precise operations.
 - Call task_complete() when done
 """
 
@@ -607,22 +615,23 @@ class Planner:
 - SKETCH CONSTRAINTS: Constrain distance (K D) — works on edges and circle radii
 - PAD: Extrude a sketch into a 3D solid (Part Design menu → Pad)
 - POCKET: Cut into a solid using a sketch (Part Design menu → Pocket, or "Through All")
-- HOLE: Purpose-built bolt/screw hole tool (Part Design menu → Hole → set diameter + depth).
-  MUCH easier and more precise than sketch circle + pocket. PREFER this for any bolt/screw holes.
+- CLEARANCE HOLE: Circle sketch on target face + Pocket ThroughAll.
+  More reliable than PartDesign::Hole. Use for bolt/screw clearance holes.
 - THICKNESS: Hollow out a solid block by selecting a face (Part Design menu → Thickness)
 - FILLET: Round edges (Part Design menu → Fillet → click edges → set radius)
 - CHAMFER: Angled edges (Part Design menu → Chamfer → click edges → set size)
 - MIRRORED: Duplicate features symmetrically (Part Design menu → Mirrored)
 - MACRO: execute_freecad_macro(code) — run Python code directly in FreeCAD for precision.
-  Use for exact positioning, complex geometry, or when GUI clicking is imprecise.
+  PREFERRED over GUI clicking. Write ONE SMALL macro per feature, check screenshot after each.
 
 RULES:
 - Decompose ALL shapes into simple steps using ONLY the operations above
 - Use rectangles (G R) and circles (G C) — NEVER polylines (the agent cannot draw them reliably)
-- For bolt/screw holes, ALWAYS use the Hole feature, not manual circle + pocket
+- For bolt/screw holes: Circle sketch + Pocket ThroughAll (NOT PartDesign::Hole)
 - For complex cutouts, use rectangle sketches + Pocket
 - Each sketch should contain only ONE piece of geometry (one rectangle OR one circle)
 - The agent is a vision model — keep workflows to 3-6 steps maximum
+- PREFER macros over GUI clicking — they give exact dimensions every time
 """
 
     def _generate_cad_goal(
@@ -668,7 +677,8 @@ RULES:
             "...\n"
             "Result: <what the finished object looks like>\n\n"
             "Keep it to 3-8 steps. Be specific about dimensions in each step. "
-            "For bolt holes use the Hole feature with exact diameter. "
+            "For bolt holes: Circle sketch + Pocket ThroughAll (NOT Hole feature). "
+            "PREFER execute_freecad_macro() for each step — one macro per feature. "
             "Do NOT use polylines. Do NOT skip dimensions."
         )
 
@@ -701,7 +711,7 @@ RULES:
             parts.append("## Workflow")
             parts.append("Create body -> Sketch -> Draw profile -> "
                          "Constrain dimensions -> Close sketch -> Pad/Extrude")
-            parts.append("For any holes: use Part Design menu -> Hole feature")
+            parts.append("For any holes: Circle sketch + Pocket ThroughAll")
             parts.append("")
 
         parts.append(self.FREECAD_TIPS)

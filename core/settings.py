@@ -115,8 +115,12 @@ Applications menu or click icons you can see on screen.
 - CRITICAL: The "Close" button in the left Tasks panel CLOSES THE ENTIRE SKETCH.
   To exit a tool (like rectangle or circle), press Escape. To close a finished sketch,
   use Sketch menu → Close sketch.
-- If GUI clicking is imprecise, use execute_freecad_macro(code) to run Python
-  code directly in FreeCAD for exact positioning and dimensions.
+- PREFER execute_freecad_macro(code) over GUI clicking for drawing geometry.
+  Macros give exact dimensions. BUT write ONE SMALL MACRO per feature:
+  Macro 1: create sketch + rectangle + pad. Check screenshot.
+  Macro 2: find face + create pocket sketch + pocket. Check screenshot.
+  Macro 3: find face + create hole circle + pocket through-all. Check screenshot.
+  NEVER put the entire design in one giant macro — if one line fails, everything after fails silently.
 
 ## Important Rules
 - Do NOT use browser-related functions (navigate, search, go_back, go_forward).
