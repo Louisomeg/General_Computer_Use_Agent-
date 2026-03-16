@@ -124,13 +124,15 @@ class Planner:
         if agent_name == "research+cad":
             return self._run_research_then_cad(user_request, description, params)
 
-        # For CAD design tasks without specific dimensions, add sensible
-        # defaults and generate a detailed action plan.  This skips research
-        # entirely — much faster and avoids rate-limit / captcha failures.
-        if agent_name == "cad" and self._is_design_task(user_request) and not params:
-            print("  [Planner] Design task without dimensions — adding defaults")
-            params = self._get_default_dimensions(user_request)
-            print(f"  [Planner] Default params: {params}")
+        # For CAD design tasks, expand compact dimension strings (e.g.
+        # "50x30x5mm") into width/height/depth params, then generate a
+        # goal-based prompt.
+        if agent_name == "cad" and self._is_design_task(user_request):
+            params = self._expand_dimensions(params, user_request)
+            if not params:
+                print("  [Planner] Design task without dimensions — adding defaults")
+                params = self._get_default_dimensions(user_request)
+            print(f"  [Planner] Params: {params}")
             description = self._build_cad_description(
                 user_request, {}, params,
             )
@@ -259,6 +261,41 @@ class Planner:
 
     # ── Simple design tasks (skip research) ──────────────────────────
 
+    @classmethod
+    def _expand_dimensions(cls, params: dict, request: str) -> dict:
+        """Expand compact dimension strings like '50x30x5mm' into width/height/depth.
+
+        Also passes through already-expanded params unchanged.
+        """
+        if not params:
+            return {}
+
+        # Already expanded (has width/height/depth keys)
+        if any(k in params for k in ["width", "height", "depth"]):
+            return params
+
+        # Look for a compact dimensions string like "50x30x5mm"
+        import re
+        dim_str = params.get("dimensions", "")
+        if not dim_str:
+            # Try the request itself
+            dim_str = request
+
+        # Match patterns like "50x30x5mm", "50x30x5", "50*30*5mm"
+        m = re.search(r"(\d+)\s*[x×*]\s*(\d+)(?:\s*[x×*]\s*(\d+))?\s*(?:mm)?", dim_str, re.I)
+        if m:
+            expanded = {"width": f"{m.group(1)}mm", "height": f"{m.group(2)}mm"}
+            if m.group(3):
+                expanded["depth"] = f"{m.group(3)}mm"
+
+            # For brackets, the third dimension is typically depth/thickness
+            lower = request.lower()
+            if any(w in lower for w in ["bracket", "l-shaped", "l shaped", "angle"]):
+                expanded["leg_thickness"] = expanded.get("depth", "5mm")
+            return expanded
+
+        return params
+
     @staticmethod
     def _is_design_task(request: str) -> bool:
         """Check if this is a design/creation task (vs a desktop/info task)."""
@@ -319,6 +356,18 @@ class Planner:
         elif any(w in lower for w in ["phone", "mobile"]):
             return {"width": "85mm", "depth": "175mm", "height": "15mm",
                     "wall_thickness": "3mm"}
+        elif any(w in lower for w in ["l-bracket", "l bracket", "l-shaped", "l shaped"]):
+            return {"width": "50mm", "height": "30mm", "depth": "5mm",
+                    "leg_thickness": "5mm"}
+        elif any(w in lower for w in ["u-channel", "u channel", "u-shaped", "u shaped"]):
+            return {"width": "50mm", "height": "30mm", "depth": "5mm",
+                    "wall_thickness": "5mm"}
+        elif any(w in lower for w in ["t-bracket", "t bracket", "t-shaped", "t shaped"]):
+            return {"width": "60mm", "height": "40mm", "depth": "5mm",
+                    "wall_thickness": "5mm"}
+        elif any(w in lower for w in ["bracket", "mount", "angle"]):
+            return {"width": "50mm", "height": "30mm", "depth": "5mm",
+                    "wall_thickness": "5mm"}
         else:
             # Generic box/container
             return {"width": "150mm", "depth": "100mm", "height": "60mm",
@@ -485,6 +534,102 @@ class Planner:
 - Call task_complete() when done
 """
 
+    # ── Shape decomposition (complex shapes → simple rectangle operations) ──
+
+    SHAPE_PATTERNS = {
+        "l_bracket": ["l-shaped", "l shaped", "l bracket", "l-bracket"],
+        "u_channel": ["u-shaped", "u shaped", "u channel", "u-channel"],
+        "t_bracket": ["t-shaped", "t shaped", "t bracket", "t-bracket"],
+        "cylinder_hole": ["cylinder with", "hole through", "tube", "pipe"],
+        "shelf": ["shelf", "bookend"],
+    }
+
+    @classmethod
+    def _detect_shape(cls, request: str) -> str | None:
+        """Detect if the request is a complex shape we should decompose."""
+        lower = request.lower()
+        for shape, keywords in cls.SHAPE_PATTERNS.items():
+            if any(kw in lower for kw in keywords):
+                return shape
+        return None
+
+    @classmethod
+    def _decompose_shape(cls, shape: str, params: dict) -> dict:
+        """Return decomposition info: bounding box + cutout dimensions + workflow.
+
+        Strategy: build complex shapes by subtracting rectangles from a
+        bounding-box block.  Flash already knows rectangles (G R), pad,
+        and pocket — no polylines needed.
+        """
+        w = cls._parse_mm(params.get("width") or params.get("total_width", "")) or 50.0
+        h = cls._parse_mm(params.get("height") or params.get("total_height", "")) or 30.0
+        d = cls._parse_mm(params.get("depth") or params.get("total_depth",
+                          params.get("thickness", ""))) or 5.0
+        wall = cls._parse_mm(params.get("wall_thickness") or
+                             params.get("leg_thickness", "")) or d  # leg width = depth for brackets
+
+        if shape == "l_bracket":
+            # L = full rectangle minus one corner
+            # Bounding box: w x h, extruded d
+            # Cutout: (w - wall) x (h - wall) at one corner
+            cut_w = w - wall
+            cut_h = h - wall
+            return {
+                "box_w": w, "box_h": h, "box_d": d,
+                "cuts": [{"w": cut_w, "h": cut_h, "label": "corner cutout"}],
+                "workflow": (
+                    f"Step 1: Create body -> Sketch on XY plane -> "
+                    f"G R rectangle -> constrain to {w}x{h}mm -> Close sketch -> Pad {d}mm\n"
+                    f"Step 2: Select top face -> Sketch on face -> "
+                    f"G R rectangle in one corner -> constrain to {cut_w}x{cut_h}mm -> "
+                    f"Close sketch -> Pocket through all\n"
+                    f"Result: L-shaped bracket with {wall}mm thick legs"
+                ),
+            }
+
+        elif shape == "u_channel":
+            # U = full rectangle minus center top
+            cut_w = w - 2 * wall
+            cut_h = h - wall
+            return {
+                "box_w": w, "box_h": h, "box_d": d,
+                "cuts": [{"w": cut_w, "h": cut_h, "label": "center cutout"}],
+                "workflow": (
+                    f"Step 1: Create body -> Sketch on XY plane -> "
+                    f"G R rectangle -> constrain to {w}x{h}mm -> Close sketch -> Pad {d}mm\n"
+                    f"Step 2: Select top face -> Sketch on face -> "
+                    f"G R rectangle centered on one edge -> constrain to {cut_w}x{cut_h}mm -> "
+                    f"Close sketch -> Pocket through all\n"
+                    f"Result: U-channel with {wall}mm thick walls"
+                ),
+            }
+
+        elif shape == "t_bracket":
+            # T = full rectangle minus two top corners
+            cut_w = (w - wall) / 2
+            cut_h = h - wall
+            return {
+                "box_w": w, "box_h": h, "box_d": d,
+                "cuts": [
+                    {"w": cut_w, "h": cut_h, "label": "left corner cutout"},
+                    {"w": cut_w, "h": cut_h, "label": "right corner cutout"},
+                ],
+                "workflow": (
+                    f"Step 1: Create body -> Sketch on XY plane -> "
+                    f"G R rectangle -> constrain to {w}x{h}mm -> Close sketch -> Pad {d}mm\n"
+                    f"Step 2: Select top face -> Sketch on face -> "
+                    f"G R rectangle in top-left corner -> constrain to {cut_w}x{cut_h}mm -> "
+                    f"Close sketch -> Pocket through all\n"
+                    f"Step 3: Select top face -> Sketch on face -> "
+                    f"G R rectangle in top-right corner -> constrain to {cut_w}x{cut_h}mm -> "
+                    f"Close sketch -> Pocket through all\n"
+                    f"Result: T-shaped bracket with {wall}mm thick web"
+                ),
+            }
+
+        # Default: no decomposition needed
+        return None
+
     def _generate_cad_goal(
         self, original_request: str, cad_params: dict,
         research_summary: str = "",
@@ -500,7 +645,21 @@ class Planner:
         We provide ONLY: the goal, dimensions, and a few critical tips for
         things that genuinely can't be figured out visually (keyboard shortcuts
         for broken submenus, which menu has "Create sketch", etc).
+
+        For complex shapes (L-bracket, U-channel, T-bracket), we decompose
+        them into simple rectangle + pocket operations that Flash already
+        knows how to do — no polylines needed.
         """
+        # Check if this is a complex shape we should decompose
+        shape = self._detect_shape(original_request)
+        decomposition = self._decompose_shape(shape, cad_params) if shape else None
+
+        if decomposition:
+            print(f"  [Planner] Decomposing {shape} into rectangle+pocket operations")
+            return self._build_decomposed_goal(
+                original_request, decomposition, research_summary,
+            )
+
         width = self._parse_mm(cad_params.get("width") or
                                cad_params.get("total_width", ""))
         depth = self._parse_mm(cad_params.get("depth") or
@@ -553,6 +712,25 @@ class Planner:
 
         goal = "\n".join(parts)
         print(f"  [Planner] Goal prompt: {len(goal)} chars")
+        return goal
+
+    def _build_decomposed_goal(
+        self, original_request: str, decomposition: dict,
+        research_summary: str = "",
+    ) -> str:
+        """Build a goal prompt for shapes decomposed into rectangle+pocket ops."""
+        parts = [f"## Goal\n{original_request}\n"]
+
+        if research_summary:
+            parts.append(f"## Context\n{research_summary}\n")
+
+        parts.append("## Build Strategy (use ONLY rectangles — no polylines)")
+        parts.append(decomposition["workflow"])
+        parts.append("")
+        parts.append(self.FREECAD_TIPS)
+
+        goal = "\n".join(parts)
+        print(f"  [Planner] Decomposed goal prompt: {len(goal)} chars")
         return goal
 
     def _build_cad_description(
