@@ -488,32 +488,29 @@ The agent is NOT smart — it follows instructions literally. Your plan must be 
 - 3D viewport is the large CENTER/RIGHT area
 - Console/log output at the BOTTOM
 
-## KEYBOARD SHORTCUTS (use these instead of menus — much more reliable)
-The agent MUST use these shortcuts instead of navigating menus:
-  - Rectangle:          press key_combination("g"), then press key_combination("r")
-  - Constrain distance: press key_combination("k"), then press key_combination("d")
-  - Close/Leave sketch: press key_combination("escape") (only when no tool is active)
-  - Undo:               press key_combination("ctrl+z")
-
-## CORRECT MENU PATHS (from official FreeCAD wiki — use only when no shortcut exists)
-- Create body:   "Part Design" menu -> "Create body"
-- Create sketch: "Sketch" menu -> "Create sketch" (NOT Part Design menu!)
-                 If a face is pre-selected, sketch is created ON that face instantly.
-- Pad:           "Part Design" menu -> "Create an additive feature" -> "Pad"
-- Pocket:        "Part Design" menu -> "Create a subtractive feature" -> "Pocket"
-- Fillet:        "Part Design" menu -> "Fillet"
+## MENU PATHS (from official FreeCAD wiki — the agent uses menus for ALL operations)
+- Create body:        "Part Design" menu -> "Create body"
+- Create sketch:      "Sketch" menu -> "Create sketch" (NOT Part Design menu!)
+                      If a face is pre-selected, sketch is created ON that face instantly.
+- Rectangle:          "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
+- Constrain distance: "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
+- Close sketch:       "Sketch" menu -> "Close sketch"
+- Pad:                "Part Design" menu -> "Create an additive feature" -> "Pad"
+- Pocket:             "Part Design" menu -> "Create a subtractive feature" -> "Pocket"
+- Fillet:             "Part Design" menu -> "Fillet"
+- Undo:               "Edit" menu -> "Undo"
 
 ## CONSTRAINT WORKFLOW (from official wiki — "Run-once mode")
 The correct way to constrain an edge is:
   1. SELECT the edge first (click it — it turns green)
-  2. THEN invoke the tool: press K then D (or use menu)
+  2. THEN invoke via menu: "Sketch" -> "Sketcher constraints" -> "Constrain distance"
   3. A dialog appears with an input field
   4. Type the value WITH units (e.g. "196.0 mm")
   5. Click the OK button (do NOT press Enter)
 IMPORTANT: selecting the edge FIRST is called "Run-once mode" and is more reliable.
 
 ## RECTANGLE WORKFLOW (from official wiki)
-  1. Press G then R to activate rectangle tool
+  1. "Sketch" menu -> "Sketcher geometries" -> "Rectangle" to activate
   2. Click first corner in viewport
   3. Click opposite diagonal corner
   4. The rectangle is created between those two points
@@ -537,22 +534,22 @@ IMPORTANT: selecting the edge FIRST is called "Run-once mode" and is more reliab
 ## COMMON MISTAKES the agent makes (your plan MUST prevent these):
 
 1. MENU NAVIGATION FAILS: Agent clicks wrong menu items or submenus don't open.
-   -> USE KEYBOARD SHORTCUTS: G R for rectangle, K D for constrain distance.
+   -> If submenu doesn't appear, click on the submenu item instead of just hovering.
 
 2. CONSTRAINT WITHOUT SELECTION: Agent invokes constraint tool WITHOUT selecting edge.
-   -> SELECT edge first (green), THEN press K D.
+   -> SELECT edge first (green), THEN open constraint via menu.
 
 3. MISSING VERTICAL CONSTRAINT: Agent constrains horizontal edge then closes sketch.
    -> Explicit step: "DO NOT close sketch. Now constrain the vertical edge."
 
 4. MULTIPLE RECTANGLES: Agent draws 2-3 rectangles on one sketch, corrupting it.
-   -> "NEVER draw a second rectangle. If wrong, Ctrl+Z to undo."
+   -> "NEVER draw a second rectangle. If wrong, Edit -> Undo."
 
 5. WRONG FACE FOR POCKET: Agent clicks a side face instead of the top face.
    -> "Click the LARGE FLAT face on TOP of the solid"
 
 6. POCKET FAILS (Sub shape not found): Sketch has overlapping geometry.
-   -> Include verification after Pocket. If it fails, Ctrl+Z and redo.
+   -> Include verification after Pocket. If it fails, Edit -> Undo and redo.
 
 7. CONSTRAINT VALUE REJECTED: Input field has old text.
    -> "Triple-click the input field to select all, then type the value"
@@ -566,10 +563,9 @@ IMPORTANT: selecting the edge FIRST is called "Run-once mode" and is more reliab
 
 ## OUTPUT FORMAT
 Return a numbered action script. Each step is ONE atomic action the agent performs.
-Use keyboard shortcuts (G R, K D, Escape, Ctrl+Z) instead of menu navigation wherever possible.
-Format:
+Use menu navigation for ALL operations. Format:
   1. ACTION: <what to do>
-     HOW: <exact keystroke or click>
+     HOW: <exact menu path or click>
      IF_ERROR: <recovery action>
      VERIFY: <what the screen should show>
 """
@@ -658,8 +654,8 @@ STEP 3: Create a sketch on XY plane.
   ACTION: In the dialog, select "XY_Plane" and click OK
   VERIFY: A sketch grid appears in the viewport
 
-STEP 4: Draw a rectangle using keyboard shortcut.
-  ACTION: Press key_combination("g"), then press key_combination("r")
+STEP 4: Draw a rectangle using the menu.
+  ACTION: Click "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
   ACTION: Click a first corner in the upper-left area of the viewport
   ACTION: Click a second corner diagonally opposite (lower-right area)
   ACTION: Press key_combination("escape") to exit the rectangle tool
@@ -667,25 +663,24 @@ STEP 4: Draw a rectangle using keyboard shortcut.
 
 STEP 5: Constrain the horizontal edge to {width} mm.
   ACTION: Click on one HORIZONTAL edge of the rectangle (it turns green when selected)
-  ACTION: Press key_combination("k"), then press key_combination("d")
+  ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
   ACTION: A dialog appears. Triple-click the input field to select all, type "{width} mm"
   ACTION: Click the OK button in the dialog
   VERIFY: A dimension annotation showing {width} appears near the horizontal edge
-  IF_ERROR: Press key_combination("ctrl+z") to undo, re-select the edge, and try again
+  IF_ERROR: Click "Edit" menu -> "Undo", re-select the edge, and try again
 
 STEP 6: Constrain the vertical edge to {depth} mm.
   DO NOT close the sketch yet!
   ACTION: Click on one VERTICAL edge of the rectangle (it turns green when selected)
-  ACTION: Press key_combination("k"), then press key_combination("d")
+  ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
   ACTION: Triple-click the input field, type "{depth} mm"
   ACTION: Click the OK button
   VERIFY: A second dimension annotation showing {depth} appears near the vertical edge
-  IF_ERROR: Press key_combination("ctrl+z") to undo, re-select the edge, and try again
+  IF_ERROR: Click "Edit" menu -> "Undo", re-select the edge, and try again
 
 STEP 7: Close the sketch.
   ONLY close after you see TWO dimension annotations.
-  ACTION: Press key_combination("escape") to leave the sketch
-  ALTERNATIVE: Click "Sketch" menu, then click "Close sketch"
+  ACTION: Click "Sketch" menu -> "Close sketch"
   VERIFY: The sketch closes and you return to the 3D view
 
 STEP 8: Pad the sketch to {height} mm.
@@ -702,8 +697,8 @@ STEP 10: Create a sketch on the top face.
   ACTION: Click "Sketch" in the menu bar (NOT Part Design!), then click "Create sketch"
   VERIFY: A sketch grid appears ON the top face (sketch is auto-attached to selected face)
 
-STEP 11: Draw the inner rectangle using keyboard shortcut.
-  ACTION: Press key_combination("g"), then press key_combination("r")
+STEP 11: Draw the inner rectangle using the menu.
+  ACTION: Click "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
   ACTION: Click a first corner INSIDE the face boundary
   ACTION: Click a second corner diagonally opposite, also INSIDE the face
   ACTION: Press key_combination("escape") to exit the rectangle tool
@@ -711,32 +706,31 @@ STEP 11: Draw the inner rectangle using keyboard shortcut.
 
 STEP 12: Constrain inner horizontal edge to {inner_width} mm.
   ACTION: Click on one HORIZONTAL edge of the inner rectangle (it turns green)
-  ACTION: Press key_combination("k"), then press key_combination("d")
+  ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
   ACTION: Triple-click the input field, type "{inner_width} mm"
   ACTION: Click the OK button
   VERIFY: A dimension annotation showing {inner_width} appears
-  IF_ERROR: Press key_combination("ctrl+z") and retry
+  IF_ERROR: Click "Edit" menu -> "Undo" and retry
 
 STEP 13: Constrain inner vertical edge to {inner_depth} mm.
   DO NOT CLOSE THE SKETCH. You must constrain the vertical edge too.
   ACTION: Click on one VERTICAL edge of the inner rectangle (it turns green)
-  ACTION: Press key_combination("k"), then press key_combination("d")
+  ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
   ACTION: Triple-click the input field, type "{inner_depth} mm"
   ACTION: Click the OK button
   VERIFY: TWO dimension annotations are visible (one for width, one for depth)
-  IF_ERROR: Press key_combination("ctrl+z") and retry
+  IF_ERROR: Click "Edit" menu -> "Undo" and retry
 
 STEP 14: Close the sketch.
   ONLY close after BOTH dimension annotations are visible.
-  ACTION: Press key_combination("escape") to leave the sketch
-  ALTERNATIVE: Click "Sketch" menu, then "Close sketch"
+  ACTION: Click "Sketch" menu -> "Close sketch"
 
 STEP 15: Create the pocket.
   ACTION: Click "Part Design" menu, then "Create a subtractive feature", then "Pocket"
   ACTION: In the Tasks panel, triple-click the Length/Depth field, type "{pocket_depth}"
   ACTION: Click OK
   VERIFY: The 3D view shows a hollow box. The model tree shows "Pocket" under "Body".
-  IF_ERROR: If "Sub shape not found", press key_combination("ctrl+z"), re-select the top face, redo steps 10-15.
+  IF_ERROR: If "Sub shape not found", click "Edit" -> "Undo", re-select the top face, redo steps 10-15.
 
 STEP 16: Task complete.
   ACTION: Call task_complete(summary="Created hollow box: {width}x{depth}x{height}mm outer, {wall}mm walls, {inner_width}x{inner_depth}mm inner pocket {pocket_depth}mm deep")

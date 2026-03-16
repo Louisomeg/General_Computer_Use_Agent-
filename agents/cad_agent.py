@@ -102,25 +102,20 @@ Safe mouse clicks:
 - Clicking items in the model tree (left panel)
 - Clicking menu items in the menu bar
 
-## KEYBOARD SHORTCUTS (use these instead of navigating menus!)
-- Rectangle:          press key_combination("g"), then press key_combination("r")
-- Constrain distance: press key_combination("k"), then press key_combination("d")
-- Close/Leave sketch: press key_combination("escape") when no tool is active
-- Undo:               press key_combination("ctrl+z")
-These are MUCH more reliable than clicking through menus.
-
-## CORRECT MENU PATHS (from official FreeCAD docs — only when no shortcut exists)
+## CORRECT MENU PATHS (from official FreeCAD docs)
 - Create body:   "Part Design" menu -> "Create body"
 - Create sketch: "Sketch" menu -> "Create sketch" (NOT Part Design menu!)
+- Rectangle:     "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
+- Constrain distance: "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
+- Close sketch:  "Sketch" menu -> "Close sketch"
 - Pad:           "Part Design" menu -> "Create an additive feature" -> "Pad"
 - Pocket:        "Part Design" menu -> "Create a subtractive feature" -> "Pocket"
 
 ## How FreeCAD's Rectangle Tool Works (IMPORTANT)
-USE THE SHORTCUT: press key_combination("g"), then press key_combination("r")
-(This is faster and more reliable than navigating Sketch -> Sketcher geometries -> Rectangle)
+Activate via menu: "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
 
 The rectangle tool uses a TWO-CLICK workflow:
-1. Activate via shortcut: key_combination("g"), then key_combination("r")
+1. Activate via menu: "Sketch" -> "Sketcher geometries" -> "Rectangle"
 2. Click the FIRST corner point in the viewport
 3. Click the SECOND corner point (the opposite diagonal corner)
 4. The rectangle is created between those two points
@@ -137,7 +132,7 @@ After drawing the rectangle, you MUST set BOTH width AND height. Do them one at 
 
 CONSTRAIN THE WIDTH (horizontal edge):
   1. Click on a HORIZONTAL edge of the rectangle (it turns green when selected)
-  2. ONLY AFTER the edge is green: press key_combination("k"), then key_combination("d")
+  2. ONLY AFTER the edge is green: "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
   3. A dialog labeled "Insert length" appears with an input field
   4. Triple-click the input field to select all, then type the value WITH units (e.g. "196.0 mm")
   5. Click the OK button in the dialog (do NOT press Enter — click OK)
@@ -146,16 +141,16 @@ CONSTRAIN THE WIDTH (horizontal edge):
 CONSTRAIN THE HEIGHT (vertical edge):
   DO NOT close the sketch! You must also constrain the vertical edge.
   1. Click on a VERTICAL edge of the rectangle (it turns green when selected)
-  2. ONLY AFTER the edge is green: press key_combination("k"), then key_combination("d")
+  2. ONLY AFTER the edge is green: "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
   3. A dialog labeled "Insert length" appears
   4. Triple-click the input field, type the value WITH units (e.g. "130.0 mm")
   5. Click the OK button
   6. VERIFY: A second dimension annotation should appear near the vertical edge
 
 CRITICAL RULES:
-- Select the edge FIRST (green), THEN press K D. Never invoke constraint without selection.
+- Select the edge FIRST (green), THEN open constraint via menu. Never invoke constraint without selection.
 - Constrain BOTH edges. Do NOT close the sketch until both dimension annotations are visible.
-- After each constraint, LOOK for the dimension annotation. If missing, Ctrl+Z and retry.
+- After each constraint, LOOK for the dimension annotation. If missing, undo and retry.
 - Always include " mm" after the number.
 
 ## How FreeCAD's Circle Tool Works (IMPORTANT)
@@ -191,15 +186,15 @@ Pocket removes material from a solid (like hollowing out a box):
    - For boxes: click the LARGE FLAT TOP face (NOT a thin side face)
    - The face will highlight green/blue when selected
 3. "Sketch" menu (NOT Part Design!) -> "Create sketch" — creates sketch ON selected face
-4. Draw ONE rectangle: press key_combination("g"), then key_combination("r")
+4. Draw ONE rectangle: "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
    - Click TWO OPPOSITE corners INSIDE the face
    - Press key_combination("escape") to exit rectangle tool
-   - NEVER draw a second rectangle. If wrong, key_combination("ctrl+z") to undo.
-5. Constrain BOTH edges using shortcuts:
-   - Click HORIZONTAL edge (green) -> press K then D -> type inner width -> click OK
-   - Click VERTICAL edge (green) -> press K then D -> type inner depth -> click OK
+   - NEVER draw a second rectangle. If wrong, use "Edit" menu -> "Undo".
+5. Constrain BOTH edges using menus:
+   - Click HORIZONTAL edge (green) -> "Sketch" -> "Sketcher constraints" -> "Constrain distance" -> type inner width -> click OK
+   - Click VERTICAL edge (green) -> "Sketch" -> "Sketcher constraints" -> "Constrain distance" -> type inner depth -> click OK
    - DO NOT close sketch until BOTH dimension annotations are visible.
-6. Close sketch: press key_combination("escape")
+6. Close sketch: "Sketch" menu -> "Close sketch"
 7. "Part Design" menu -> "Create a subtractive feature" -> "Pocket"
 8. Set the depth in the Tasks panel -> Click OK
 
@@ -210,8 +205,7 @@ Pocket removes material from a solid (like hollowing out a box):
 4. Click OK
 
 ## Closing the Sketch
-Press key_combination("escape") when no tool is active to leave the sketch.
-ALTERNATIVE: Click "Sketch" menu -> "Close sketch".
+Click "Sketch" menu -> "Close sketch".
 
 ## Error Recovery — CRITICAL RULES
 - NEVER use the Delete key. It permanently removes the WRONG thing.
