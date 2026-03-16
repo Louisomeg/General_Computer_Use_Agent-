@@ -30,7 +30,7 @@ import os
 PROVIDER = os.environ.get("AGENT_PROVIDER", "gemini").lower()
 
 # Gemini models
-DEFAULT_MODEL = "gemini-2.5-computer-use-preview-10-2025"  # Computer Use agents (Pro-tier CU model)
+DEFAULT_MODEL = "gemini-3-flash-preview"          # Computer Use agents (best for FreeCAD)
 PLANNING_MODEL = "gemini-3.1-pro-preview"          # Text-only calls (planner, dimension extraction)
 
 # Claude models
