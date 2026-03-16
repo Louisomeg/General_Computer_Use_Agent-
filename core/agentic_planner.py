@@ -554,12 +554,26 @@ IMPORTANT: selecting the edge FIRST is called "Run-once mode" and is more reliab
 7. CONSTRAINT VALUE REJECTED: Input field has old text.
    -> "Triple-click the input field to select all, then type the value"
 
+8. POCKET SKETCH NOT CENTERED: Inner rectangle drawn near an edge, pocket cuts through walls.
+   -> Draw the inner rectangle CENTERED on the top face. Pick the first corner roughly
+      {wall_thickness}mm inside the top-left edge and the second corner roughly
+      {wall_thickness}mm inside the bottom-right edge. The rectangle MUST be fully
+      inside the face boundary with equal margins on all sides.
+
 ## VERIFICATION CHECKPOINTS (your plan MUST include these):
 - After rectangle: "VERIFY: 4 white/green lines forming a rectangle in the viewport"
 - After constraint: "VERIFY: a dimension annotation (number with arrows) near the edge"
 - After pad: "VERIFY: model tree shows 'Pad' under 'Body', 3D solid visible"
 - After pocket sketch: "VERIFY: sketch grid appears on the top face"
 - After pocket: "VERIFY: model tree shows 'Pocket', 3D view shows hollow interior"
+
+## IMPORTANT RULES FOR THE PLAN
+- Step 1 MUST be: "Minimize the terminal window" (right-click terminal in taskbar -> Minimize)
+- The LAST step MUST be: Call task_complete(summary="description of what was built")
+- NEVER use keyboard shortcuts for FreeCAD operations. Use MENU navigation for everything.
+- The ONLY keyboard actions allowed are: Escape (cancel tool), typing values in dialogs.
+- Use "Edit" menu -> "Undo" for mistakes (not Ctrl+Z).
+- NEVER click small toolbar icons — use the menu bar text (Sketch, Part Design, Edit, etc.)
 
 ## OUTPUT FORMAT
 Return a numbered action script. Each step is ONE atomic action the agent performs.
@@ -641,27 +655,31 @@ End with calling task_complete().
         width, depth, height, wall, inner_width, inner_depth, pocket_depth,
     ) -> str:
         """Hardcoded fallback plan if Gemini 3.1 Pro is unavailable."""
-        return f"""## ACTION SCRIPT — Follow each step exactly. Use keyboard shortcuts.
+        return f"""## ACTION SCRIPT — Follow each step exactly. Use menus for ALL operations.
 
-STEP 1: Open FreeCAD (if not already open). Look at the screen.
+STEP 1: Minimize the terminal window.
+  ACTION: Right-click the terminal in the TASKBAR (top bar) and click "Minimize"
+  VERIFY: The terminal is gone. You can see the desktop or FreeCAD.
 
-STEP 2: Create a new body.
+STEP 2: Open FreeCAD (if not already open). Look at the screen.
+
+STEP 3: Create a new body.
   ACTION: Click "Part Design" in the menu bar, then click "Create body"
   VERIFY: "Body" appears in the model tree on the left
 
-STEP 3: Create a sketch on XY plane.
+STEP 4: Create a sketch on XY plane.
   ACTION: Click "Sketch" in the menu bar (NOT Part Design!), then click "Create sketch"
   ACTION: In the dialog, select "XY_Plane" and click OK
   VERIFY: A sketch grid appears in the viewport
 
-STEP 4: Draw a rectangle using the menu.
+STEP 5: Draw a rectangle using the menu.
   ACTION: Click "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
   ACTION: Click a first corner in the upper-left area of the viewport
   ACTION: Click a second corner diagonally opposite (lower-right area)
   ACTION: Press key_combination("escape") to exit the rectangle tool
   VERIFY: You see 4 lines forming a rectangle. NEVER draw a second rectangle.
 
-STEP 5: Constrain the horizontal edge to {width} mm.
+STEP 6: Constrain the horizontal edge to {width} mm.
   ACTION: Click on one HORIZONTAL edge of the rectangle (it turns green when selected)
   ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
   ACTION: A dialog appears. Triple-click the input field to select all, type "{width} mm"
@@ -669,7 +687,7 @@ STEP 5: Constrain the horizontal edge to {width} mm.
   VERIFY: A dimension annotation showing {width} appears near the horizontal edge
   IF_ERROR: Click "Edit" menu -> "Undo", re-select the edge, and try again
 
-STEP 6: Constrain the vertical edge to {depth} mm.
+STEP 7: Constrain the vertical edge to {depth} mm.
   DO NOT close the sketch yet!
   ACTION: Click on one VERTICAL edge of the rectangle (it turns green when selected)
   ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
@@ -678,33 +696,35 @@ STEP 6: Constrain the vertical edge to {depth} mm.
   VERIFY: A second dimension annotation showing {depth} appears near the vertical edge
   IF_ERROR: Click "Edit" menu -> "Undo", re-select the edge, and try again
 
-STEP 7: Close the sketch.
+STEP 8: Close the sketch.
   ONLY close after you see TWO dimension annotations.
   ACTION: Click "Sketch" menu -> "Close sketch"
   VERIFY: The sketch closes and you return to the 3D view
 
-STEP 8: Pad the sketch to {height} mm.
+STEP 9: Pad the sketch to {height} mm.
   ACTION: Click "Part Design" menu, then "Create an additive feature", then "Pad"
   ACTION: In the Tasks panel, triple-click the Length field, type "{height}"
   ACTION: Click OK
   VERIFY: A 3D rectangular solid appears. The model tree shows "Pad" under "Body".
 
-STEP 9: Select the top face for the pocket.
+STEP 10: Select the top face for the pocket.
   ACTION: Click on the LARGE FLAT face on TOP of the solid (it highlights green/blue)
   VERIFY: The face is highlighted. Do NOT click a thin side face.
 
-STEP 10: Create a sketch on the top face.
+STEP 11: Create a sketch on the top face.
   ACTION: Click "Sketch" in the menu bar (NOT Part Design!), then click "Create sketch"
   VERIFY: A sketch grid appears ON the top face (sketch is auto-attached to selected face)
 
-STEP 11: Draw the inner rectangle using the menu.
+STEP 12: Draw the inner rectangle CENTERED on the top face.
   ACTION: Click "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
-  ACTION: Click a first corner INSIDE the face boundary
-  ACTION: Click a second corner diagonally opposite, also INSIDE the face
+  ACTION: Click the first corner roughly {wall} mm INSIDE the top-left edge of the face
+  ACTION: Click the second corner roughly {wall} mm INSIDE the bottom-right edge
+  IMPORTANT: The rectangle MUST be fully inside the face with equal margins on all sides.
+             Do NOT draw it near an edge — it must be CENTERED.
   ACTION: Press key_combination("escape") to exit the rectangle tool
-  VERIFY: A rectangle appears. NEVER draw a second rectangle on this sketch.
+  VERIFY: A rectangle appears INSIDE the face boundary. NEVER draw a second rectangle.
 
-STEP 12: Constrain inner horizontal edge to {inner_width} mm.
+STEP 13: Constrain inner horizontal edge to {inner_width} mm.
   ACTION: Click on one HORIZONTAL edge of the inner rectangle (it turns green)
   ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
   ACTION: Triple-click the input field, type "{inner_width} mm"
@@ -712,7 +732,7 @@ STEP 12: Constrain inner horizontal edge to {inner_width} mm.
   VERIFY: A dimension annotation showing {inner_width} appears
   IF_ERROR: Click "Edit" menu -> "Undo" and retry
 
-STEP 13: Constrain inner vertical edge to {inner_depth} mm.
+STEP 14: Constrain inner vertical edge to {inner_depth} mm.
   DO NOT CLOSE THE SKETCH. You must constrain the vertical edge too.
   ACTION: Click on one VERTICAL edge of the inner rectangle (it turns green)
   ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
@@ -721,18 +741,18 @@ STEP 13: Constrain inner vertical edge to {inner_depth} mm.
   VERIFY: TWO dimension annotations are visible (one for width, one for depth)
   IF_ERROR: Click "Edit" menu -> "Undo" and retry
 
-STEP 14: Close the sketch.
+STEP 15: Close the sketch.
   ONLY close after BOTH dimension annotations are visible.
   ACTION: Click "Sketch" menu -> "Close sketch"
 
-STEP 15: Create the pocket.
+STEP 16: Create the pocket.
   ACTION: Click "Part Design" menu, then "Create a subtractive feature", then "Pocket"
   ACTION: In the Tasks panel, triple-click the Length/Depth field, type "{pocket_depth}"
   ACTION: Click OK
   VERIFY: The 3D view shows a hollow box. The model tree shows "Pocket" under "Body".
-  IF_ERROR: If "Sub shape not found", click "Edit" -> "Undo", re-select the top face, redo steps 10-15.
+  IF_ERROR: If "Sub shape not found", click "Edit" -> "Undo", re-select the top face, redo steps 11-16.
 
-STEP 16: Task complete.
+STEP 17: Task complete.
   ACTION: Call task_complete(summary="Created hollow box: {width}x{depth}x{height}mm outer, {wall}mm walls, {inner_width}x{inner_depth}mm inner pocket {pocket_depth}mm deep")
 """
 
