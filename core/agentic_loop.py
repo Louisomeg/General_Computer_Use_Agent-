@@ -87,6 +87,7 @@ class AgenticLoop:
         finish_function_name: str = "task_complete",
         max_output_tokens: int = 2048,
         stage_budgets: Optional[List[dict]] = None,
+        verify_before_complete: bool = False,
     ):
         self.client = client
         self.model_name = model_name
@@ -109,6 +110,7 @@ class AgenticLoop:
         # Each stage dict: {"name": str, "budget": int, "description": str}
         # Stages are consumed in order. When a stage exceeds its budget,
         # a warning is injected telling the agent to move on.
+        self._verify_before_complete = verify_before_complete
         self._stage_budgets = stage_budgets or []
         self._stage_turns = 0  # turns spent in current stage
         self._current_stage_idx = 0  # index into _stage_budgets
@@ -498,27 +500,31 @@ class AgenticLoop:
                     extra_fields["safety_acknowledgement"] = "true"
 
                 # ── Verification gate for task_complete ────────────────
-                # The first time the agent calls task_complete(), reject it
-                # and ask the agent to verify the result visually. Only
-                # accept on the second call (after verification).
-                if (fc.name == self.finish_function_name
+                # When enabled, the first time the agent calls the finish
+                # function, reject it and ask it to verify the result
+                # visually. Only accept on the second call.
+                if (self._verify_before_complete
+                        and fc.name == self.finish_function_name
                         and not self._verification_requested):
                     self._verification_requested = True
                     print("  [!] task_complete intercepted — requesting verification")
+                    verify_response = {
+                        "status": "verification_required",
+                        "message": (
+                            "BEFORE completing: Look at the screenshot carefully. "
+                            "Does the 3D model match the task requirements? "
+                            "Check: (1) correct shape/profile, (2) all holes present, "
+                            "(3) dimensions look reasonable, (4) no error dialogs. "
+                            "If everything looks correct, call task_complete() again. "
+                            "If something is wrong, fix it first."
+                        ),
+                    }
+                    # Preserve safety acknowledgement to avoid 400 errors
+                    verify_response.update(extra_fields)
                     response_parts.append(
                         types.Part.from_function_response(
                             name=fc.name,
-                            response={
-                                "status": "verification_required",
-                                "message": (
-                                    "BEFORE completing: Look at the screenshot carefully. "
-                                    "Does the 3D model match the task requirements? "
-                                    "Check: (1) correct shape/profile, (2) all holes present, "
-                                    "(3) dimensions look reasonable, (4) no error dialogs. "
-                                    "If everything looks correct, call task_complete() again. "
-                                    "If something is wrong, fix it first."
-                                ),
-                            },
+                            response=verify_response,
                         )
                     )
                     continue  # Skip execution, force verification

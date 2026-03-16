@@ -101,6 +101,7 @@ class CADAgent:
             extra_declarations=[TASK_COMPLETE_DECLARATION],
             custom_declarations=get_custom_declarations(),
             stage_budgets=CAD_STAGE_BUDGETS,
+            verify_before_complete=True,
         )
 
     @property
