@@ -151,6 +151,41 @@ class Planner:
         self._report(result)
         return result
 
+    def run_cad_only(self, user_request: str, dims: dict = None) -> Task:
+        """Skip research and go straight to CAD with optional dimensions.
+
+        Use this for quick iteration when you already know the dimensions
+        or want sensible defaults without waiting for the research agent.
+        """
+        print(f"\n{'='*60}")
+        print(f"PLANNER (CAD-only mode)")
+        print(f"Request: {user_request}")
+        print(f"{'='*60}\n")
+
+        # Use provided dims, or extract/generate defaults
+        params = dict(dims) if dims else {}
+        if not params:
+            params = self._expand_dimensions(params, user_request)
+        if not params:
+            params = self._get_default_dimensions(user_request)
+        print(f"  Params: {params}")
+
+        description = self._build_cad_description(user_request, {}, params)
+        task = Task(description=description, params=params)
+
+        try:
+            cad_agent = get_agent(
+                "cad", client=self.client, executor=self.executor,
+            )
+            result = cad_agent.execute(task)
+        except Exception as e:
+            print(f"  [Planner] CAD agent error: {e}")
+            task.fail(error=str(e))
+            result = task
+
+        self._report(result)
+        return result
+
     def _report(self, result: Task):
         """Print result summary."""
         print(f"\n{'='*60}")

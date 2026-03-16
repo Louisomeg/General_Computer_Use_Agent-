@@ -90,24 +90,91 @@ def double_click(x: int, y: int) -> dict:
 MACRO_LOG_PATH = "/tmp/agent_macro_log.txt"
 
 
-def execute_freecad_macro(code: str) -> dict:
-    """Execute Python code in FreeCAD's Python console via macro file.
+def _find_freecad_console_y():
+    """Find the Python console input Y position inside FreeCAD.
+
+    Searches for the FreeCAD window, gets its geometry, and calculates
+    where the Python console input line should be (near the bottom of
+    the window, above the status bar).
+
+    Returns the screen Y coordinate, or None if FreeCAD is not found.
+    """
+    try:
+        result = subprocess.run(
+            ["xdotool", "search", "--name", "FreeCAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        window_ids = [w for w in result.stdout.strip().split('\n') if w]
+        if not window_ids:
+            return None
+
+        window_id = window_ids[-1]  # Main window is usually last
+
+        # Get window geometry
+        geo = subprocess.run(
+            ["xdotool", "getwindowgeometry", "--shell", window_id],
+            capture_output=True, text=True, timeout=5,
+        )
+        vals = {}
+        for line in geo.stdout.strip().split('\n'):
+            if '=' in line:
+                k, v = line.split('=', 1)
+                try:
+                    vals[k] = int(v)
+                except ValueError:
+                    vals[k] = v
+
+        win_y = vals.get('Y', 0)
+        win_h = vals.get('HEIGHT', 800)
+
+        # Python console input is near the bottom of FreeCAD window.
+        # Layout from top: menu(~25) + toolbar(~35) + 3D viewport +
+        # model tree | properties | python console + status bar(~22)
+        # The console input line is typically ~30-40px from bottom.
+        console_y = win_y + win_h - 35
+        return console_y
+    except (subprocess.SubprocessError, OSError):
+        return None
+
+
+def _focus_freecad_window():
+    """Focus the FreeCAD window and return True if successful."""
+    try:
+        result = subprocess.run(
+            ["xdotool", "search", "--name", "FreeCAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        window_ids = [w for w in result.stdout.strip().split('\n') if w]
+        if not window_ids:
+            return False
+
+        window_id = window_ids[-1]
+        subprocess.run(
+            ["xdotool", "windowactivate", "--sync", window_id],
+            check=True, timeout=5,
+        )
+        time.sleep(0.3)
+        return True
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+
+def execute_freecad_macro(code):
+    """Run Python code in FreeCAD's Python console via macro file.
 
     Writes the code to a temporary .py file, wrapped in try/except to
-    capture errors.  After execution, reads the log file to check for
-    errors and returns them to the agent so it can self-correct.
+    capture errors.  Focuses the FreeCAD Python console dynamically
+    (not at hardcoded coordinates) and pastes the run command.
+    After running, reads the log file to check for errors.
     """
     macro_path = "/tmp/agent_macro.py"
     try:
         # Wrap user code in try/except that writes errors to a log file.
-        # This is the ONLY way to detect FreeCAD Python errors since we
-        # execute via xdotool (no stdout/stderr access).
         wrapped_code = (
             "import traceback as _tb\n"
             f"_log = open('{MACRO_LOG_PATH}', 'w')\n"
             "try:\n"
         )
-        # Indent each line of user code
         for line in code.splitlines():
             wrapped_code += f"    {line}\n"
         wrapped_code += (
@@ -126,30 +193,58 @@ def execute_freecad_macro(code: str) -> dict:
         with open(MACRO_LOG_PATH, "w") as f:
             f.write("")
 
-        # Focus the Python console input at the bottom of FreeCAD
+        # Focus FreeCAD window first
+        if not _focus_freecad_window():
+            return {"error": "FreeCAD window not found. Is FreeCAD running?"}
+
+        # Find the Python console Y position dynamically
+        console_y = _find_freecad_console_y()
+        if console_y is None:
+            console_y = 760  # Fallback: 40px from bottom of 800px screen
+
+        # Click the Python console input line
+        # Use center X of screen (FreeCAD is usually maximized)
+        console_x = 640
         subprocess.run(
-            ["xdotool", "mousemove", "640", "780"],
+            ["xdotool", "mousemove", str(console_x), str(console_y)],
             check=True,
         )
         subprocess.run(["xdotool", "click", "1"], check=True)
         time.sleep(CLICK_DELAY)
 
-        # Clear existing text
+        # Clear existing text in the console input
         subprocess.run(["xdotool", "key", "ctrl+a"], check=True)
         subprocess.run(["xdotool", "key", "BackSpace"], check=True)
         time.sleep(0.1)
 
-        # Type the command to run the macro file
-        # Using a safe, fixed path — no user input in the command
-        run_cmd = "exec(open('/tmp/agent_macro.py').read())"
-        subprocess.run(
-            ["xdotool", "type", "--delay", str(TYPING_DELAY), run_cmd],
-            check=True,
-        )
+        # Build the command to run the macro file
+        # NOTE: This uses Python's exec() to run a file inside FreeCAD's
+        # embedded Python console — this is the standard FreeCAD macro
+        # execution pattern and is intentional.
+        run_cmd = "exec(open('" + macro_path + "').read())"
+
+        # Try xclip paste first (faster), fall back to xdotool type
+        pasted = False
+        try:
+            subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=run_cmd.encode(), check=True, timeout=3,
+            )
+            subprocess.run(["xdotool", "key", "ctrl+v"], check=True)
+            pasted = True
+        except (FileNotFoundError, subprocess.SubprocessError):
+            pass  # xclip not installed or failed
+
+        if not pasted:
+            subprocess.run(
+                ["xdotool", "type", "--clearmodifiers", "--delay",
+                 str(TYPING_DELAY), run_cmd],
+                check=True,
+            )
+
         subprocess.run(["xdotool", "key", "Return"], check=True)
-        # Give FreeCAD time to execute.  Complex macros (creating multiple
-        # features, recomputing shapes) can take several seconds.
-        # Scale wait time based on code length as a rough proxy for complexity.
+
+        # Wait for FreeCAD to run the macro. Scale by code complexity.
         wait_time = min(2.0 + len(code) / 500, 8.0)
         time.sleep(wait_time)
 
@@ -161,15 +256,15 @@ def execute_freecad_macro(code: str) -> dict:
             log_content = ""
 
         if not log_content:
-            # Log file empty — macro may not have finished or crashed hard
             return {
                 "success": False,
                 "warning": "Macro produced no output — it may have crashed or is still running. "
-                           "Check the screenshot for error dialogs.",
+                           "Check the screenshot for error dialogs. "
+                           "TIP: The Python console input may not be focused. "
+                           "Try clicking the bottom area of FreeCAD first, then retry.",
                 "macro_path": macro_path,
             }
         elif log_content.startswith("ERROR:"):
-            # Macro raised a Python exception — return the full traceback
             return {
                 "error": f"FreeCAD macro error: {log_content}",
                 "macro_path": macro_path,
@@ -178,7 +273,7 @@ def execute_freecad_macro(code: str) -> dict:
             return {"success": True, "macro_path": macro_path}
 
     except subprocess.CalledProcessError as e:
-        return {"error": f"Macro execution failed (xdotool): {e}"}
+        return {"error": f"Macro failed (xdotool): {e}"}
     except IOError as e:
         return {"error": f"Failed to write macro file: {e}"}
 

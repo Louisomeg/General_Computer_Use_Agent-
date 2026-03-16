@@ -111,6 +111,7 @@ apt-get install -y \
     xvfb \
     x11vnc \
     xdotool \
+    xclip \
     scrot \
     python3 \
     python3-pip \
@@ -425,6 +426,7 @@ install_system_deps() {
         python3-venv \
         scrot \
         xdotool \
+        xclip \
         ffmpeg \
         git \
         curl \
