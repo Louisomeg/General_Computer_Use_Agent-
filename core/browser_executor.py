@@ -38,7 +38,7 @@ class BrowserExecutor(Executor):
     """
 
     def __init__(self, screen_width=BROWSER_SCREEN_WIDTH, screen_height=BROWSER_SCREEN_HEIGHT,
-                 initial_url="https://www.google.com", headless=False):
+                 initial_url="https://duckduckgo.com", headless=False):
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.initial_url = initial_url
@@ -249,7 +249,7 @@ class BrowserExecutor(Executor):
         return self._ok()
 
     def _search(self, a):
-        self._page.goto("https://www.google.com")
+        self._page.goto("https://duckduckgo.com")
         self._page.wait_for_load_state()
         return self._ok()
 

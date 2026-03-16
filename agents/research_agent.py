@@ -69,13 +69,14 @@ Do NOT just type the raw user question into Google. Construct targeted search qu
 
 PHASE 3 — EXECUTE RESEARCH
 For each sub-question in your research plan:
-1. Navigate to Google or directly to a known high-quality source
-2. Enter a well-formed search query
+1. Use DuckDuckGo (duckduckgo.com) for ALL searches — it has no CAPTCHAs
+2. Enter a well-formed search query in the DuckDuckGo search bar
 3. Click through to actual pages — do NOT rely on search result snippets alone
 4. READ the page content carefully. Scroll down if needed.
 5. Extract specific data points with their units
 6. Note the URL as a source
 7. Move to the next source and cross-reference
+8. Once you have 2-3 sources with the key data, call report_findings() IMMEDIATELY
 
 PHASE 4 — VERIFY AND CROSS-REFERENCE
 - Every key data point must appear in at least 2 independent sources
@@ -86,27 +87,25 @@ PHASE 5 — REPORT
 When you have sufficient data (or have exhausted reasonable sources), call report_findings() with your structured results. Do not keep searching indefinitely — know when you have enough.
 
 === SEARCH STRATEGY RULES ===
-1. Start with the most specific query possible
-2. If results are poor, broaden the query
-3. Never search the same query twice
-4. Try different search engines (bing.com, duckduckgo.com) or direct URLs if Google is unhelpful
+1. ALWAYS use DuckDuckGo (duckduckgo.com) — NEVER use Google (it blocks with CAPTCHAs)
+2. Start with the most specific query possible
+3. If results are poor, broaden the query
+4. Never search the same query twice
 5. Prefer .edu, .gov, .org, and manufacturer domains over random blogs
 6. If a page has a table of specifications, that is high-value data — read it carefully
 7. If a page returns 404 or loads badly, go BACK and try the next link in the search results
 8. Scroll through the search result hyperlinks and pick the best-looking ones before clicking
+9. When you find data you need, WRITE IT DOWN by calling report_findings() — do not keep searching hoping for more. 3 sources is enough.
 
 === OBSTACLE HANDLING PROTOCOL ===
 
 CAPTCHA Handling:
-- Simple checkbox ("I am not a robot"): Click it once. Wait 3 seconds for the result.
-- If an image puzzle appears (select traffic lights, buses, crosswalks, etc.):
-  TRY TO SOLVE IT ONCE. Look at the images carefully, click the correct ones, then click Verify.
-  If it gives you a second puzzle or says "try again", STOP. Go back immediately.
-  Do NOT attempt more than one round of image puzzles.
+- If you encounter ANY CAPTCHA (image puzzles, checkbox, etc.), go BACK immediately.
+  Do NOT attempt to solve CAPTCHAs — they waste turns and rarely succeed.
 - Cloudflare "checking your browser" page: Wait 5 seconds for it to resolve.
-  If still blocked after waiting, go back. If blocked twice on same domain, abandon it.
-- If Google itself keeps blocking you after one CAPTCHA attempt, switch to bing.com or duckduckgo.com.
-- Strategy: Google first -> if blocked, try CAPTCHA once -> if still blocked, Bing -> if Bing blocked, DuckDuckGo -> if all blocked, navigate directly to known websites from your plan.
+  If still blocked after waiting, go back and try a different site.
+- If a site blocks you, abandon it and try a different source.
+- Use DuckDuckGo for searching — it does not have CAPTCHAs.
 
 Cookie/Consent Banners:
 - Look for buttons labeled: "Accept All", "Accept", "OK", "I Agree", "Got it", "Allow All"
@@ -148,9 +147,11 @@ Confidence levels:
    with whatever data you have. Partial data is MUCH better than no data at all.
 6. Be efficient — visit 3-5 good sources. Extract data quickly and move on.
 7. Prioritise structured data (tables, spec sheets) over prose.
-8. If Google is blocked or unhelpful, switch to bing.com or duckduckgo.com IMMEDIATELY.
-   You can also navigate directly to known authoritative websites (e.g. engineering reference sites).
+8. Use DuckDuckGo for all searches. You can also navigate directly to known authoritative
+   websites (e.g. engineering reference sites like engineeringtoolbox.com, amesweb.info).
 9. Do NOT spend more than 2-3 turns on a single website. Extract what you can and move on.
+10. When you have found the key data points, call report_findings() IMMEDIATELY.
+    Do NOT keep searching for more sources once you have enough data.
 """
 
 # all json results and pdf reports go here
@@ -261,17 +262,17 @@ DONE WHEN:
             f"RESEARCH TASK: {query}\n\n"
             f"RESEARCH PLAN:\n{self.research_plan}\n\n"
             f"Execute this plan now. Follow these rules:\n"
-            f"1. Start by searching on Google. If Google blocks you or gives poor results, "
-            f"switch to bing.com or duckduckgo.com immediately.\n"
-            f"2. Visit AT LEAST 3-5 different websites to cross-reference data. "
-            f"Do NOT rely on a single source.\n"
+            f"1. You are on DuckDuckGo. Use it for ALL searches. "
+            f"NEVER navigate to Google — it will block you with CAPTCHAs.\n"
+            f"2. Visit 2-3 websites to cross-reference data. "
+            f"Do NOT spend too long — extract data and move on.\n"
             f"3. If a page is broken, blocked, or paywalled, go BACK immediately and "
             f"try the NEXT search result — do not waste turns on bad pages.\n"
             f"4. Extract SPECIFIC numbers with units (mm, inches, etc.) — not vague descriptions.\n"
-            f"5. When you have data from multiple sources, call report_findings() with ALL data points. "
-            f"Do NOT keep searching forever — 3-5 good sources is enough.\n"
+            f"5. As soon as you have the key data from 2-3 sources, call report_findings() "
+            f"with ALL data points. Do NOT keep searching — report what you have.\n"
             f"6. If you are running low on turns, call report_findings() IMMEDIATELY with "
-            f"whatever data you have so far. Partial data is better than no data."
+            f"whatever data you have so far. Partial data is MUCH better than no data."
         )
 
         print(f"\n{'='*60}")
@@ -369,9 +370,9 @@ DONE WHEN:
         try:
             prompt = (
                 f"RESEARCH TASK: {sub_query}\n\n"
-                f"Find this specific information. Visit 2-3 websites. "
-                f"If Google blocks you, use bing.com or duckduckgo.com. "
-                f"Call report_findings() when you have the data."
+                f"Find this specific information. Use DuckDuckGo for searching "
+                f"(NEVER Google). Visit 2-3 websites. "
+                f"Call report_findings() as soon as you have the data."
             )
             with BrowserExecutor(headless=headless) as browser:
                 loop = AgenticLoop(
