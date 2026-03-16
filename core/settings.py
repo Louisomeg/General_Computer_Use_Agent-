@@ -24,8 +24,17 @@ APP_LAUNCH_DELAY = 3.0          # Pause after launching an application (used by 
 SEARCH_TYPE_DELAY = 1.0         # Pause after typing in launcher (used by freecad_functions)
 
 # Model configuration
+# Set PROVIDER to "claude" to use Claude computer use, or "gemini" for Gemini (default).
+# Override via environment: export AGENT_PROVIDER=claude
+import os
+PROVIDER = os.environ.get("AGENT_PROVIDER", "gemini").lower()
+
+# Gemini models
 DEFAULT_MODEL = "gemini-3-flash-preview"          # Computer Use agents (CAD, research browsing)
 PLANNING_MODEL = "gemini-3.1-pro-preview"          # Text-only calls (planner, dimension extraction)
+
+# Claude models
+CLAUDE_CU_MODEL = "claude-sonnet-4-20250514"       # Claude Computer Use agent
 
 # Screenshot
 SCREENSHOT_PATH = "/tmp/agent_screenshot.png"
@@ -84,11 +93,8 @@ IMPORTANT: NEVER use keyboard shortcuts to launch applications. Always use the
 Applications menu or click icons you can see on screen.
 
 ## Coordinate System
-- Coordinates use a NORMALIZED 0-1000 grid for both X and Y.
+- Screen resolution: {screen_w}x{screen_h} pixels.
 - (0, 0) = top-left corner of the screen.
-- (500, 500) = center of the screen.
-- (999, 999) = bottom-right corner of the screen.
-- The system automatically converts these to actual screen pixels.
 - Look at the screenshot carefully to estimate where UI elements are located.
 
 ## Action Guidelines
@@ -118,3 +124,8 @@ Applications menu or click icons you can see on screen.
 - If something is not working after 3 attempts, describe the problem and stop.
 - Report what you see and what you did clearly to the user.
 """
+
+# Format with actual screen dimensions
+SYSTEM_INSTRUCTION = SYSTEM_INSTRUCTION.format(
+    screen_w=SCREEN_WIDTH, screen_h=SCREEN_HEIGHT,
+)
