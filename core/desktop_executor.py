@@ -51,6 +51,7 @@ class DesktopExecutor(Executor):
             # Custom functions
             "right_click_at": self._right_click_at,
             "double_click_at": self._double_click_at,
+            "execute_freecad_macro": self._execute_freecad_macro,
             # Completion signal
             "task_complete": self._task_complete,
         }
@@ -253,6 +254,12 @@ class DesktopExecutor(Executor):
     def _double_click_at(self, args: dict) -> dict:
         x, y = self.denormalize(args["x"], args["y"])
         return freecad_functions.double_click(x, y)
+
+    def _execute_freecad_macro(self, args: dict) -> dict:
+        code = args.get("code", "")
+        if not code:
+            return {"error": "No code provided"}
+        return freecad_functions.execute_freecad_macro(code)
 
     def _task_complete(self, args: dict) -> dict:
         summary = args.get("summary", "Task completed")

@@ -50,6 +50,21 @@ AGENT_CARD = {
 # by Gemini 3.1 Pro) which is passed as the user prompt.  Having a single
 # source of truth avoids conflicting instructions that confused the agent.
 
+# Stage budgets for turn tracking — prevents the agent from burning
+# all 120 turns on one step (like trying to click a single button).
+CAD_STAGE_BUDGETS = [
+    {"name": "setup", "budget": 10,
+     "description": "Open FreeCAD, create body, enter first sketch"},
+    {"name": "base_shape", "budget": 25,
+     "description": "Draw base profile, constrain dimensions, close sketch, Pad"},
+    {"name": "features", "budget": 50,
+     "description": "Add holes, pockets, fillets, chamfers, additional sketches"},
+    {"name": "cleanup", "budget": 10,
+     "description": "Fit view, verify result, save if needed"},
+    {"name": "reserve", "budget": 25,
+     "description": "Recovery budget for undo/retry operations"},
+]
+
 
 # Function declaration so the CAD agent can signal "I'm done"
 TASK_COMPLETE_DECLARATION = types.FunctionDeclaration(
@@ -85,6 +100,7 @@ class CADAgent:
             max_turns=120,
             extra_declarations=[TASK_COMPLETE_DECLARATION],
             custom_declarations=get_custom_declarations(),
+            stage_budgets=CAD_STAGE_BUDGETS,
         )
 
     @property

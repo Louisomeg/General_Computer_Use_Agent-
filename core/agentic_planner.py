@@ -270,6 +270,9 @@ class Planner:
         if not params:
             return {}
 
+        # Normalize aliases first
+        params = cls._normalize_params(params)
+
         # Already expanded (has width/height/depth keys)
         if any(k in params for k in ["width", "height", "depth"]):
             return params
@@ -512,7 +515,7 @@ class Planner:
             val = f"{dp.get('value', '')} {dp.get('unit', '')}".strip()
             if key and val:
                 params[key] = val
-        return params
+        return self._normalize_params(params)
 
     @staticmethod
     def _parse_mm(value: str) -> float | None:
@@ -521,259 +524,190 @@ class Planner:
         m = re.search(r"([\d.]+)", str(value))
         return float(m.group(1)) if m else None
 
-    # ── FreeCAD tips (minimal — only things Flash can't figure out visually) ──
+    # ── FreeCAD tips (all primitives + operations the agent needs) ──
 
     FREECAD_TIPS = """## Critical FreeCAD Tips
-- Rectangle shortcut: press G then R (bypasses broken 3-level submenu)
+
+### Sketcher Geometry Shortcuts (press keys IN the sketcher)
+- Rectangle: press G then R → click two opposite corners → press Escape to exit tool
+- Circle: press G then C → click center point → click edge to set radius → press Escape
+- Line: press G then L → click start → click end → press Escape
+- Arc: press G then A → click start → click end → click midpoint → press Escape
+- Point: press G then P → click location → press Escape
+- After drawing ANY geometry, press Escape to exit the tool. Do NOT click "Close" in the left panel — that closes the ENTIRE SKETCH.
+
+### Sketcher Constraints
 - Constrain distance shortcut: press K then D (bypasses broken 3-level submenu)
-- Create sketch is under "Sketch" menu, NOT "Part Design" menu
-- After drawing a rectangle, press Escape to exit rectangle mode. Do NOT click "Close" in the left panel — that closes the ENTIRE SKETCH, not just the tool.
 - To constrain an edge: click the edge so it turns GREEN, then press K then D. A dialog appears — type the value and press Enter.
 - Constrain BOTH width (horizontal edge) and height (vertical edge) before closing a sketch
 - If K D does not open a dialog, the edge was not selected. Click directly ON the edge line (not near it), confirm it turns green, then try K D again.
+- To constrain a circle radius: click the circle edge so it turns green, then press K then D.
 - NEVER click toolbar icons for constraints — they are too small and you will misclick. ALWAYS use K then D.
-- Thickness tool: select a face, then click Thickness in the left panel or Part Design menu. It hollows out a solid block — easiest way to make boxes, trays, and channels
-- To close a finished sketch: use Sketch menu -> Close sketch. Do NOT click "Close" in the left Tasks panel.
-- Use View -> Standard views -> Fit All to re-center the object after major operations
-- Use "Edit" menu -> "Undo" if something goes wrong. Do not hesitate to undo multiple times.
+
+### Sketch Management
+- Create sketch: "Sketch" menu → New sketch (NOT "Part Design" menu)
+- Close sketch: "Sketch" menu → Close sketch. Do NOT click "Close" in the left Tasks panel.
+- Sketch on a face: click the face first, then Sketch menu → New sketch
+
+### Part Design Operations (use menu bar, not toolbar)
+- Pad (extrude): Part Design menu → Pad → set length → OK
+- Pocket (cut into solid): Part Design menu → Pocket → set depth → OK (or "Through All")
+- Hole feature: Click a face → Part Design menu → Hole → set diameter and depth → OK
+  This is the EASIEST way to make bolt holes — much simpler than sketch circle + pocket.
+  For clearance holes: set "Profile" to "None", type the diameter directly.
+- Fillet (round edges): Part Design menu → Fillet → click edges to round → set radius → OK
+- Chamfer (angled edges): Part Design menu → Chamfer → click edges → set size → OK
+- Thickness (hollow out): select a face → Part Design menu → Thickness → set wall thickness → OK
+  Hollows out a solid block — easiest way to make boxes, trays, and channels.
+- Mirrored: Part Design menu → Mirrored → select plane → OK (duplicates features symmetrically)
+
+### General Tips
+- Use View → Standard views → Fit All to re-center the object after major operations
+- Use "Edit" menu → "Undo" if something goes wrong. Do not hesitate to undo multiple times.
+- For bolt holes, PREFER the Hole feature over manual circle+pocket — it handles diameter precisely.
+- You can also use execute_freecad_macro() to run Python code in FreeCAD for precise operations.
 - Call task_complete() when done
 """
 
-    # ── Shape decomposition (complex shapes → simple rectangle operations) ──
+    # ── Parameter normalization ──────────────────────────────────────
 
-    SHAPE_PATTERNS = {
-        "l_bracket": ["l-shaped", "l shaped", "l bracket", "l-bracket"],
-        "u_channel": ["u-shaped", "u shaped", "u channel", "u-channel"],
-        "t_bracket": ["t-shaped", "t shaped", "t bracket", "t-bracket"],
-        "cylinder_hole": ["cylinder with", "hole through", "tube", "pipe"],
-        "shelf": ["shelf", "bookend"],
+    PARAM_ALIASES = {
+        "length": "depth",
+        "total_width": "width",
+        "total_height": "height",
+        "total_depth": "depth",
+        "leg_thickness": "wall_thickness",
+        "thickness": "wall_thickness",
+        "material_thickness": "wall_thickness",
+        "bolt_hole_diameter": "hole_diameter",
+        "clearance_hole": "hole_diameter",
+        "bore_diameter": "hole_diameter",
     }
 
     @classmethod
-    def _detect_shape(cls, request: str) -> str | None:
-        """Detect if the request is a complex shape we should decompose."""
-        lower = request.lower()
-        for shape, keywords in cls.SHAPE_PATTERNS.items():
-            if any(kw in lower for kw in keywords):
-                return shape
-        return None
+    def _normalize_params(cls, params: dict) -> dict:
+        """Normalize parameter keys using PARAM_ALIASES.
 
-    @classmethod
-    def _decompose_shape(cls, shape: str, params: dict) -> dict:
-        """Return decomposition info: bounding box + cutout dimensions + workflow.
-
-        Strategy: build complex shapes by subtracting rectangles from a
-        bounding-box block.  Flash already knows rectangles (G R), pad,
-        and pocket — no polylines needed.
+        Maps variant key names to canonical names so downstream code
+        doesn't need to check multiple keys.  If both an alias and the
+        canonical key exist, the canonical key takes priority.
         """
-        w = cls._parse_mm(params.get("width") or params.get("total_width", "")) or 50.0
-        h = cls._parse_mm(params.get("height") or params.get("total_height", "")) or 30.0
-        d = cls._parse_mm(params.get("depth") or params.get("total_depth",
-                          params.get("thickness", ""))) or 5.0
-        wall = cls._parse_mm(params.get("wall_thickness") or
-                             params.get("leg_thickness", "")) or d  # leg width = depth for brackets
+        normalized = {}
+        for key, value in params.items():
+            canonical = cls.PARAM_ALIASES.get(key, key)
+            # Don't overwrite canonical keys with aliases
+            if canonical not in normalized:
+                normalized[canonical] = value
+        return normalized
 
-        if shape == "l_bracket":
-            # L = full rectangle minus one corner
-            # Bounding box: w x h, extruded d
-            # Cutout: (w - wall) x (h - wall) at one corner
-            cut_w = w - wall
-            cut_h = h - wall
-            return {
-                "box_w": w, "box_h": h, "box_d": d,
-                "cuts": [{"w": cut_w, "h": cut_h, "label": "corner cutout"}],
-                "workflow": (
-                    f"Step 1: Create body -> Sketch on XY plane -> "
-                    f"G R rectangle -> constrain to {w}x{h}mm -> Close sketch -> Pad {d}mm\n"
-                    f"Step 2: Select top face -> Sketch on face -> "
-                    f"G R rectangle in one corner -> constrain to {cut_w}x{cut_h}mm -> "
-                    f"Close sketch -> Pocket through all\n"
-                    f"Result: L-shaped bracket with {wall}mm thick legs"
-                ),
-            }
+    # ── Available operations vocabulary (tells the LLM what the agent can do) ──
 
-        elif shape == "u_channel":
-            # U-channel = a box open at the top (like a tray with tall walls)
-            # Use Thickness tool — Flash already knows this from box-making
-            return {
-                "box_w": w, "box_h": h, "box_d": d,
-                "cuts": [],
-                "workflow": (
-                    f"Step 1: Create body -> Sketch on XY plane -> "
-                    f"G R rectangle -> constrain to {w}x{h}mm -> Close sketch -> Pad {h}mm\n"
-                    f"Step 2: Click the top face of the block -> "
-                    f"Use Thickness tool (Part Design menu or left panel) -> "
-                    f"set thickness to {wall}mm -> OK\n"
-                    f"Result: U-channel / open-top tray with {wall}mm thick walls"
-                ),
-            }
+    AVAILABLE_OPERATIONS = """Available FreeCAD operations the agent can perform:
+- SKETCH GEOMETRY: Rectangle (G R), Circle (G C), Line (G L), Arc (G A), Point (G P)
+- SKETCH CONSTRAINTS: Constrain distance (K D) — works on edges and circle radii
+- PAD: Extrude a sketch into a 3D solid (Part Design menu → Pad)
+- POCKET: Cut into a solid using a sketch (Part Design menu → Pocket, or "Through All")
+- HOLE: Purpose-built bolt/screw hole tool (Part Design menu → Hole → set diameter + depth).
+  MUCH easier and more precise than sketch circle + pocket. PREFER this for any bolt/screw holes.
+- THICKNESS: Hollow out a solid block by selecting a face (Part Design menu → Thickness)
+- FILLET: Round edges (Part Design menu → Fillet → click edges → set radius)
+- CHAMFER: Angled edges (Part Design menu → Chamfer → click edges → set size)
+- MIRRORED: Duplicate features symmetrically (Part Design menu → Mirrored)
+- MACRO: execute_freecad_macro(code) — run Python code directly in FreeCAD for precision.
+  Use for exact positioning, complex geometry, or when GUI clicking is imprecise.
 
-        elif shape == "t_bracket":
-            # T = full rectangle minus two top corners
-            cut_w = (w - wall) / 2
-            cut_h = h - wall
-            return {
-                "box_w": w, "box_h": h, "box_d": d,
-                "cuts": [
-                    {"w": cut_w, "h": cut_h, "label": "left corner cutout"},
-                    {"w": cut_w, "h": cut_h, "label": "right corner cutout"},
-                ],
-                "workflow": (
-                    f"Step 1: Create body -> Sketch on XY plane -> "
-                    f"G R rectangle -> constrain to {w}x{h}mm -> Close sketch -> Pad {d}mm\n"
-                    f"Step 2: Select top face -> Sketch on face -> "
-                    f"G R rectangle in top-left corner -> constrain to {cut_w}x{cut_h}mm -> "
-                    f"Close sketch -> Pocket through all\n"
-                    f"Step 3: Select top face -> Sketch on face -> "
-                    f"G R rectangle in top-right corner -> constrain to {cut_w}x{cut_h}mm -> "
-                    f"Close sketch -> Pocket through all\n"
-                    f"Result: T-shaped bracket with {wall}mm thick web"
-                ),
-            }
-
-        # Default: no decomposition needed
-        return None
+RULES:
+- Decompose ALL shapes into simple steps using ONLY the operations above
+- Use rectangles (G R) and circles (G C) — NEVER polylines (the agent cannot draw them reliably)
+- For bolt/screw holes, ALWAYS use the Hole feature, not manual circle + pocket
+- For complex cutouts, use rectangle sketches + Pocket
+- Each sketch should contain only ONE piece of geometry (one rectangle OR one circle)
+- The agent is a vision model — keep workflows to 3-6 steps maximum
+"""
 
     def _generate_cad_goal(
         self, original_request: str, cad_params: dict,
         research_summary: str = "",
     ) -> str:
-        """Build a SHORT goal-based prompt for the CAD agent.
+        """Use the planning LLM to generate a step-by-step FreeCAD workflow.
 
-        Philosophy: Flash is a vision agent — it works BEST when given a clear
-        goal and dimensions, then allowed to look at the screen and figure out
-        the clicks.  Detailed step-by-step scripts (19 steps, 7000+ chars)
-        actually make it WORSE because it stops using visual reasoning and
-        tries to follow text literally, repeating coordinates from the plan.
+        Instead of hardcoded templates for each shape type, we ask Gemini
+        3.1 Pro to decompose the design into simple operations from our
+        vocabulary.  This handles ANY shape without new code.
 
-        We provide ONLY: the goal, dimensions, and a few critical tips for
-        things that genuinely can't be figured out visually (keyboard shortcuts
-        for broken submenus, which menu has "Create sketch", etc).
-
-        For complex shapes (L-bracket, U-channel, T-bracket), we decompose
-        them into simple rectangle + pocket operations that Flash already
-        knows how to do — no polylines needed.
+        Fallback: if the LLM call fails, build a minimal goal prompt with
+        just the dimensions and tips (let the vision agent figure it out).
         """
-        # Check if this is a complex shape we should decompose
-        shape = self._detect_shape(original_request)
-        decomposition = self._decompose_shape(shape, cad_params) if shape else None
+        # Normalize params so we have canonical key names
+        cad_params = self._normalize_params(cad_params)
 
-        if decomposition:
-            print(f"  [Planner] Decomposing {shape} into rectangle+pocket operations")
-            return self._build_decomposed_goal(
-                original_request, decomposition, research_summary,
-            )
+        # Format dimensions for the prompt
+        dim_lines = []
+        for key, value in cad_params.items():
+            label = key.replace("_", " ").title()
+            dim_lines.append(f"- {label}: {value}")
+        dim_text = "\n".join(dim_lines) if dim_lines else "- Use sensible defaults"
 
-        width = self._parse_mm(cad_params.get("width") or
-                               cad_params.get("total_width", ""))
-        depth = self._parse_mm(cad_params.get("depth") or
-                               cad_params.get("total_depth", ""))
-        height = self._parse_mm(cad_params.get("height") or
-                                cad_params.get("total_height", ""))
-        wall = self._parse_mm(cad_params.get("wall_thickness", ""))
+        workflow_prompt = (
+            "You are a CAD workflow planner. Generate a step-by-step FreeCAD "
+            "workflow for building the requested object.\n\n"
+            f"USER REQUEST: {original_request}\n\n"
+            f"DIMENSIONS:\n{dim_text}\n\n"
+        )
+        if research_summary:
+            workflow_prompt += f"RESEARCH CONTEXT:\n{research_summary}\n\n"
 
-        width = width or 150.0
-        depth = depth or 100.0
-        height = height or 60.0
-        wall = wall or 5.0
+        workflow_prompt += (
+            f"{self.AVAILABLE_OPERATIONS}\n"
+            "Generate a workflow as numbered steps. Each step should be ONE "
+            "clear action (create sketch, draw rectangle, constrain, close "
+            "sketch, pad, pocket, hole, etc.).\n\n"
+            "FORMAT:\n"
+            "Step 1: <action>\n"
+            "Step 2: <action>\n"
+            "...\n"
+            "Result: <what the finished object looks like>\n\n"
+            "Keep it to 3-8 steps. Be specific about dimensions in each step. "
+            "For bolt holes use the Hole feature with exact diameter. "
+            "Do NOT use polylines. Do NOT skip dimensions."
+        )
 
-        inner_width = width - 2 * wall
-        inner_depth = depth - 2 * wall
-        pocket_depth = height - wall
+        workflow = None
+        for model in self.PLAN_MODELS:
+            try:
+                response = self.client.models.generate_content(
+                    model=model, contents=workflow_prompt,
+                )
+                workflow = response.text.strip()
+                if workflow:
+                    print(f"  [Planner] LLM-generated workflow ({len(workflow)} chars)")
+                    break
+            except Exception as e:
+                print(f"  [Planner] Workflow generation failed ({e})")
 
-        lower = original_request.lower()
-        is_hollow = any(w in lower for w in [
-            "box", "case", "enclosure", "container", "chest", "holder",
-            "tray", "drawer", "bin", "hollow",
-        ])
-
-        # Detect compartments
-        import re
-        compartment_match = re.search(r"(\d+)\s*compartment", lower)
-        num_compartments = int(compartment_match.group(1)) if compartment_match else 0
-
+        # Build the final goal prompt
         parts = [f"## Goal\n{original_request}\n"]
 
         if research_summary:
             parts.append(f"## Context\n{research_summary}\n")
 
-        parts.append("## Dimensions")
-        parts.append(f"- Outer: {width} x {depth} x {height} mm")
-        if is_hollow:
-            parts.append(f"- Wall thickness: {wall} mm")
-        if num_compartments >= 2:
-            parts.append(f"- Compartments: {num_compartments}")
+        parts.append(f"## Dimensions\n{dim_text}\n")
 
-        parts.append("")
-
-        if is_hollow and num_compartments >= 2:
-            # Box with compartments: solid block → pocket compartments from top
-            # Each compartment is a separate pocket — simpler than Thickness + divider
-            compartment_width = (width - (num_compartments + 1) * wall) / num_compartments
-            pocket_depth = height - wall  # leave bottom wall
-
-            parts.append("## Workflow")
-            parts.append(
-                f"Step 1: Create body -> Sketch on XY plane -> "
-                f"G R rectangle -> constrain width (horizontal edge) to {width}mm "
-                f"and height (vertical edge) to {depth}mm -> "
-                f"Close sketch (Sketch menu -> Close sketch) -> Pad {height}mm"
-            )
-
-            for i in range(num_compartments):
-                offset_x = wall + i * (compartment_width + wall)
-                parts.append(
-                    f"Step {i+2}: Click the top face of the block -> "
-                    f"Sketch menu -> New sketch (select the top face) -> "
-                    f"G R rectangle for compartment {i+1} -> "
-                    f"constrain width to {compartment_width:.1f}mm and "
-                    f"height to {depth - 2*wall:.1f}mm -> "
-                    f"Close sketch -> Pocket (Part Design menu -> Pocket) -> "
-                    f"set depth to {pocket_depth:.1f}mm -> OK"
-                )
-
-            parts.append(
-                f"\nResult: Box with {num_compartments} compartments, "
-                f"each ~{compartment_width:.1f}mm wide, "
-                f"{wall}mm walls between them"
-            )
-        elif is_hollow:
-            parts.append("## Workflow")
-            parts.append("Create body -> Sketch on XY plane -> Rectangle -> "
-                         f"Constrain width (horizontal edge) to {width}mm "
-                         f"and height (vertical edge) to {depth}mm -> "
-                         f"Close sketch (Sketch menu -> Close sketch) -> "
-                         f"Pad {height}mm -> Click top face -> "
-                         f"Thickness tool (set to {wall}mm) -> OK")
+        if workflow:
+            parts.append(f"## Workflow\n{workflow}\n")
         else:
+            # Fallback: minimal instructions, let vision agent figure it out
+            print("  [Planner] Using fallback workflow (LLM generation failed)")
             parts.append("## Workflow")
             parts.append("Create body -> Sketch -> Draw profile -> "
                          "Constrain dimensions -> Close sketch -> Pad/Extrude")
+            parts.append("For any holes: use Part Design menu -> Hole feature")
+            parts.append("")
 
-        parts.append("")
         parts.append(self.FREECAD_TIPS)
 
         goal = "\n".join(parts)
         print(f"  [Planner] Goal prompt: {len(goal)} chars")
-        return goal
-
-    def _build_decomposed_goal(
-        self, original_request: str, decomposition: dict,
-        research_summary: str = "",
-    ) -> str:
-        """Build a goal prompt for shapes decomposed into rectangle+pocket ops."""
-        parts = [f"## Goal\n{original_request}\n"]
-
-        if research_summary:
-            parts.append(f"## Context\n{research_summary}\n")
-
-        parts.append("## Build Strategy (use ONLY rectangles — no polylines)")
-        parts.append(decomposition["workflow"])
-        parts.append("")
-        parts.append(self.FREECAD_TIPS)
-
-        goal = "\n".join(parts)
-        print(f"  [Planner] Decomposed goal prompt: {len(goal)} chars")
         return goal
 
     def _build_cad_description(

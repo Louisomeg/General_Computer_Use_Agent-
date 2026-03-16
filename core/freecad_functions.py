@@ -1,4 +1,6 @@
+import os
 import subprocess
+import tempfile
 import time
 
 from core.settings import (
@@ -83,6 +85,49 @@ def double_click(x: int, y: int) -> dict:
         return {"success": True}
     except subprocess.CalledProcessError as e:
         return {"error": str(e)}
+
+
+def execute_freecad_macro(code: str) -> dict:
+    """Execute Python code in FreeCAD's Python console via macro file.
+
+    Writes the code to a temporary .py file and runs it by typing an
+    exec() command into FreeCAD's Python console using xdotool.
+    This is more reliable than typing multi-line code directly.
+    """
+    macro_path = "/tmp/agent_macro.py"
+    try:
+        # Write the macro code to a temp file
+        with open(macro_path, "w") as f:
+            f.write(code)
+
+        # Focus the Python console input at the bottom of FreeCAD
+        subprocess.run(
+            ["xdotool", "mousemove", "640", "780"],
+            check=True,
+        )
+        subprocess.run(["xdotool", "click", "1"], check=True)
+        time.sleep(CLICK_DELAY)
+
+        # Clear existing text
+        subprocess.run(["xdotool", "key", "ctrl+a"], check=True)
+        subprocess.run(["xdotool", "key", "BackSpace"], check=True)
+        time.sleep(0.1)
+
+        # Type the command to run the macro file
+        # Using a safe, fixed path — no user input in the command
+        run_cmd = "exec(open('/tmp/agent_macro.py').read())"
+        subprocess.run(
+            ["xdotool", "type", "--delay", str(TYPING_DELAY), run_cmd],
+            check=True,
+        )
+        subprocess.run(["xdotool", "key", "Return"], check=True)
+        time.sleep(1.0)  # Give FreeCAD time to execute
+
+        return {"success": True, "macro_path": macro_path}
+    except subprocess.CalledProcessError as e:
+        return {"error": f"Macro execution failed: {e}"}
+    except IOError as e:
+        return {"error": f"Failed to write macro file: {e}"}
 
 
 def system_scroll(x: int, y: int, direction: str, clicks: int = 3) -> dict:

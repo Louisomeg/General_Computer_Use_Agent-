@@ -86,6 +86,7 @@ class AgenticLoop:
         custom_declarations: Optional[List[types.FunctionDeclaration]] = None,
         finish_function_name: str = "task_complete",
         max_output_tokens: int = 2048,
+        stage_budgets: Optional[List[dict]] = None,
     ):
         self.client = client
         self.model_name = model_name
@@ -104,9 +105,64 @@ class AgenticLoop:
         self._empty_reset_done = False  # one-shot history reset on persistent empty responses
         self._cached_config = self._build_config()
 
+        # Stage budgeting: tracks how many turns each stage is allowed.
+        # Each stage dict: {"name": str, "budget": int, "description": str}
+        # Stages are consumed in order. When a stage exceeds its budget,
+        # a warning is injected telling the agent to move on.
+        self._stage_budgets = stage_budgets or []
+        self._stage_turns = 0  # turns spent in current stage
+        self._current_stage_idx = 0  # index into _stage_budgets
+        self._stage_warning_sent = False  # only warn once per stage
+
     @property
     def turn_count(self):
         return self._turn_count
+
+    def _check_stage_budget(self) -> Optional[str]:
+        """Check if the current stage has exceeded its turn budget.
+
+        Returns a warning message if the stage is over budget, or None.
+        Automatically advances to the next stage after warning.
+        """
+        if not self._stage_budgets:
+            return None
+        if self._current_stage_idx >= len(self._stage_budgets):
+            return None
+
+        self._stage_turns += 1
+        stage = self._stage_budgets[self._current_stage_idx]
+        budget = stage["budget"]
+        name = stage["name"]
+
+        if self._stage_turns > budget and not self._stage_warning_sent:
+            self._stage_warning_sent = True
+            # Build info about remaining stages
+            remaining_stages = self._stage_budgets[self._current_stage_idx + 1:]
+            next_desc = ""
+            if remaining_stages:
+                next_stage = remaining_stages[0]
+                next_desc = f" Move on to: {next_stage['description']}"
+
+            warning = (
+                f"STAGE BUDGET EXCEEDED: You have spent {self._stage_turns} turns "
+                f"on '{name}' (budget was {budget}).{next_desc} "
+                f"Close the current operation NOW and proceed to the next step. "
+                f"If stuck, use execute_freecad_macro() for precision, or "
+                f"call task_complete() if the design is good enough."
+            )
+            print(f"  [!] Stage '{name}' over budget ({self._stage_turns}/{budget})")
+            return warning
+
+        return None
+
+    def advance_stage(self):
+        """Manually advance to the next stage (called when a stage milestone is detected)."""
+        if self._current_stage_idx < len(self._stage_budgets):
+            stage = self._stage_budgets[self._current_stage_idx]
+            print(f"  [Stage] Completed '{stage['name']}' in {self._stage_turns} turns")
+            self._current_stage_idx += 1
+            self._stage_turns = 0
+            self._stage_warning_sent = False
 
     # ── Safety acknowledgement (from Google reference code) ──────────────
 
@@ -489,6 +545,11 @@ class AgenticLoop:
                         )
                         response_parts.append(types.Part.from_text(text=warning))
                         print(f"  [!] FINAL TURN warning injected")
+
+                # Stage budget warning (injected alongside turn warnings)
+                stage_warning = self._check_stage_budget()
+                if stage_warning:
+                    response_parts.append(types.Part.from_text(text=stage_warning))
 
                 history.append(types.Content(role='user', parts=response_parts))
 

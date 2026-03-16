@@ -54,4 +54,38 @@ def get_custom_declarations() -> list:
                 "required": ["x", "y"],
             },
         ),
+        # Execute a FreeCAD Python macro for precision operations
+        types.FunctionDeclaration(
+            name="execute_freecad_macro",
+            description=(
+                "Execute Python code directly in FreeCAD's Python console. "
+                "Use this for precision operations that are hard to achieve by "
+                "clicking (exact hole placement, precise dimensions, complex "
+                "geometry). The code runs in FreeCAD's embedded Python "
+                "interpreter with full access to FreeCAD, Part, PartDesign, "
+                "and Sketcher modules. The macro is written to a temp file "
+                "and executed via FreeCAD's RunMacro. Use this when GUI "
+                "clicking is imprecise or when you need exact coordinates. "
+                "Example: creating a hole at exact position (10, 15) with "
+                "diameter 6.6mm."
+            ),
+            parameters_json_schema={
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": (
+                            "FreeCAD Python code to execute. Has access to "
+                            "FreeCAD, Part, PartDesign, Sketcher modules. "
+                            "Example: "
+                            "'import FreeCAD\\n"
+                            "doc = FreeCAD.ActiveDocument\\n"
+                            "body = doc.getObject(\"Body\")\\n"
+                            "doc.recompute()'"
+                        ),
+                    },
+                },
+                "required": ["code"],
+            },
+        ),
     ]

@@ -55,6 +55,8 @@ Your tools are:
 - double_click_at — open files/folders
 - drag_and_drop — drag elements
 - key_combination — ONLY for text editing keys (Escape, Enter, Ctrl+S, Ctrl+Z, etc.)
+- execute_freecad_macro(code) — run Python code directly in FreeCAD for precision operations.
+  Use this when GUI clicking is imprecise or you need exact coordinates/dimensions.
 - task_complete — signal you are done
 
 Look at the screenshot and click on visible UI elements to accomplish your goal.
@@ -105,11 +107,16 @@ Applications menu or click icons you can see on screen.
 - AVOID clicking small toolbar icons — they are ~24px wide and easy to misclick.
   NEVER click toolbar icons for constraints. Use keyboard shortcuts K then D instead.
 - Use menus for everything: sketcher tools (Sketch → Sketcher geometries),
-  Part Design operations (Part Design → Pad, Pocket), view changes (View menu).
+  Part Design operations (Part Design → Pad, Pocket, Hole), view changes (View menu).
+- Sketcher shortcuts (press keys while IN a sketch):
+  Rectangle: G then R | Circle: G then C | Line: G then L | Constrain: K then D
+- For bolt/screw holes: use Part Design → Hole (much easier than circle + pocket)
 - When FreeCAD first opens, you may see a Start page. Click "Create New..." to begin.
 - CRITICAL: The "Close" button in the left Tasks panel CLOSES THE ENTIRE SKETCH.
-  To exit a tool (like rectangle), press Escape. To close a finished sketch,
+  To exit a tool (like rectangle or circle), press Escape. To close a finished sketch,
   use Sketch menu → Close sketch.
+- If GUI clicking is imprecise, use execute_freecad_macro(code) to run Python
+  code directly in FreeCAD for exact positioning and dimensions.
 
 ## Important Rules
 - Do NOT use browser-related functions (navigate, search, go_back, go_forward).
