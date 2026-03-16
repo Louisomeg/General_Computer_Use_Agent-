@@ -334,19 +334,24 @@ class CADAgent:
                 parts.append(f"- {label}: {value}")
             parts.append("")
 
-        # Demonstration reference (visual examples from processed tutorials)
-        demo_images = []
-        demo_result = self._build_demo_reference(task)
-        if demo_result:
-            demo_text, demo_images = demo_result
-            parts.append(demo_text)
+        # NOTE: Demo references and tutorial skills are DISABLED to avoid
+        # prompt interference.  The detailed action plan from the planner
+        # already contains all the FreeCAD knowledge the agent needs.
+        # Re-enable these once we confirm the base workflow works.
+        #
+        # # Demonstration reference (visual examples from processed tutorials)
+        # demo_images = []
+        # demo_result = self._build_demo_reference(task)
+        # if demo_result:
+        #     demo_text, demo_images = demo_result
+        #     parts.append(demo_text)
+        #
+        # # Tutorial reference (tips, troubleshooting from YAML skills)
+        # reference = self._build_reference_from_tutorials()
+        # if reference:
+        #     parts.append(reference)
 
-        # Tutorial reference (tips, troubleshooting from YAML skills)
-        reference = self._build_reference_from_tutorials()
-        if reference:
-            parts.append(reference)
-
-        return "\n".join(parts), demo_images
+        return "\n".join(parts), []
 
     def _build_demo_reference(self, task: Task) -> tuple[str, list[bytes]] | None:
         """Find and format a relevant demonstration for the task.
