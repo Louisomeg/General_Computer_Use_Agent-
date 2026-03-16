@@ -3,19 +3,27 @@
 # General Computer Use Agent — Automated Deployment Script
 # =============================================================================
 # Deploys the agent on an Ubuntu Linux machine with XFCE desktop.
+# Can also provision a fresh Google Cloud VM from scratch.
 #
 # Usage:
 #   chmod +x scripts/deploy.sh
-#   ./scripts/deploy.sh              # full deploy (system deps + python + app)
-#   ./scripts/deploy.sh --python     # python deps only (skip system packages)
-#   ./scripts/deploy.sh --verify     # verify existing installation
-#   ./scripts/deploy.sh --update     # git pull + reinstall python deps
+#   ./scripts/deploy.sh                          # full local deploy
+#   ./scripts/deploy.sh --gcp                    # create GCP VM + deploy
+#   ./scripts/deploy.sh --gcp --name my-agent    # custom VM name
+#   ./scripts/deploy.sh --gcp --zone us-east1-b  # custom zone
+#   ./scripts/deploy.sh --python                 # python deps only
+#   ./scripts/deploy.sh --verify                 # verify installation
+#   ./scripts/deploy.sh --update                 # git pull + reinstall
 #
-# Requirements:
+# Requirements (local deploy):
 #   - Ubuntu 22.04+ with XFCE desktop and X11
-#   - sudo access (for system package installation)
-#   - Display resolution set to 1280x800
+#   - sudo access
 #   - Internet connection
+#
+# Requirements (GCP deploy):
+#   - gcloud CLI installed and authenticated
+#   - A GCP project with Compute Engine API enabled
+#   - GEMINI_API_KEY environment variable set
 # =============================================================================
 
 set -euo pipefail
@@ -31,6 +39,16 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 VENV_DIR="$PROJECT_ROOT/venv"
+
+# GCP defaults
+GCP_VM_NAME="engineering-agent-v2"
+GCP_ZONE="us-central1-a"
+GCP_MACHINE_TYPE="e2-standard-4"
+GCP_IMAGE_FAMILY="ubuntu-2204-lts"
+GCP_IMAGE_PROJECT="ubuntu-os-cloud"
+GCP_DISK_SIZE="50GB"
+GCP_REPO_URL="https://github.com/Louisomeg/General_Computer_Use_Agent-.git"
+GCP_REPO_BRANCH="design"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -53,6 +71,338 @@ check_cmd() {
         err "$1 not found"
         return 1
     fi
+}
+
+# ── GCP VM Provisioning ─────────────────────────────────────────────────────
+
+generate_startup_script() {
+    # Generates the cloud-init / startup script that runs inside the VM
+    # on first boot. Installs everything and leaves the agent ready to run.
+    local api_key="${GEMINI_API_KEY:-}"
+
+    cat <<'STARTUP_HEADER'
+#!/usr/bin/env bash
+# =============================================================================
+# GCP VM Startup Script — General Computer Use Agent
+# Runs on first boot to set up the complete environment.
+# =============================================================================
+set -euo pipefail
+exec > /var/log/agent-deploy.log 2>&1
+echo "=== Agent deployment started at $(date) ==="
+
+AGENT_USER="louismensah227"
+AGENT_HOME="/home/$AGENT_USER"
+PROJECT_DIR="$AGENT_HOME/General_Computer_Use_Agent-"
+
+# ── Create user if needed ────────────────────────────────────────────────
+if ! id "$AGENT_USER" &>/dev/null; then
+    useradd -m -s /bin/bash "$AGENT_USER"
+    echo "$AGENT_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$AGENT_USER
+    echo "[+] User $AGENT_USER created"
+fi
+
+# ── System packages ──────────────────────────────────────────────────────
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update -qq
+apt-get install -y \
+    xfce4 \
+    xfce4-goodies \
+    xvfb \
+    x11vnc \
+    xdotool \
+    scrot \
+    python3 \
+    python3-pip \
+    python3-venv \
+    ffmpeg \
+    git \
+    curl \
+    wget \
+    dbus-x11 \
+    at-spi2-core \
+    software-properties-common
+
+echo "[+] Core system packages installed"
+
+# ── Chromium ─────────────────────────────────────────────────────────────
+if ! command -v chromium-browser &>/dev/null && ! command -v chromium &>/dev/null; then
+    apt-get install -y chromium-browser 2>/dev/null || \
+    apt-get install -y chromium 2>/dev/null || \
+    snap install chromium 2>/dev/null || \
+    echo "[!] Could not install Chromium"
+fi
+echo "[+] Chromium installed"
+
+# ── FreeCAD ──────────────────────────────────────────────────────────────
+if ! command -v freecad &>/dev/null; then
+    add-apt-repository -y ppa:freecad-maintainers/freecad-stable 2>/dev/null || true
+    apt-get update -qq
+    apt-get install -y freecad 2>/dev/null || \
+    snap install freecad 2>/dev/null || \
+    echo "[!] Could not install FreeCAD"
+fi
+echo "[+] FreeCAD installed"
+
+STARTUP_HEADER
+
+    # Inject the API key and repo config (these are variable)
+    cat <<STARTUP_VARS
+# ── Configuration (injected at deploy time) ──────────────────────────────
+GEMINI_API_KEY="${api_key}"
+REPO_URL="${GCP_REPO_URL}"
+REPO_BRANCH="${GCP_REPO_BRANCH}"
+STARTUP_VARS
+
+    cat <<'STARTUP_BODY'
+
+# ── Virtual display (Xvfb) ──────────────────────────────────────────────
+# Create a persistent virtual X11 display at 1280x800 (agent's expected resolution)
+cat > /etc/systemd/system/xvfb.service <<EOF
+[Unit]
+Description=Virtual X11 Display (Xvfb)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1280x800x24 -ac +extension GLX +render -noreset
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable xvfb
+systemctl start xvfb
+echo "[+] Xvfb virtual display started on :99 (1280x800)"
+
+# ── XFCE session on virtual display ─────────────────────────────────────
+cat > /etc/systemd/system/xfce-session.service <<EOF
+[Unit]
+Description=XFCE Desktop Session
+After=xvfb.service
+Requires=xvfb.service
+
+[Service]
+Type=simple
+User=$AGENT_USER
+Environment=DISPLAY=:99
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u $AGENT_USER)/bus
+ExecStartPre=/bin/bash -c 'mkdir -p /run/user/$(id -u $AGENT_USER) && chown $AGENT_USER:$AGENT_USER /run/user/$(id -u $AGENT_USER)'
+ExecStart=/usr/bin/xfce4-session
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable xfce-session
+systemctl start xfce-session
+echo "[+] XFCE session started on :99"
+
+# ── VNC server (for remote viewing) ─────────────────────────────────────
+cat > /etc/systemd/system/x11vnc.service <<EOF
+[Unit]
+Description=x11vnc VNC Server
+After=xvfb.service xfce-session.service
+Requires=xvfb.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/x11vnc -display :99 -forever -shared -rfbport 5900 -nopw -xkb
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable x11vnc
+systemctl start x11vnc
+echo "[+] VNC server started on port 5900"
+
+# ── Clone project ────────────────────────────────────────────────────────
+su - $AGENT_USER -c "
+    if [ ! -d '$PROJECT_DIR' ]; then
+        git clone '$REPO_URL' '$PROJECT_DIR'
+        cd '$PROJECT_DIR'
+        git checkout '$REPO_BRANCH'
+    else
+        cd '$PROJECT_DIR'
+        git pull origin '$REPO_BRANCH'
+    fi
+    echo '[+] Repository cloned/updated'
+"
+
+# ── Python environment ───────────────────────────────────────────────────
+su - $AGENT_USER -c "
+    cd '$PROJECT_DIR'
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install --upgrade pip -q
+    pip install -r requirements.txt -q
+    python -m playwright install chromium 2>/dev/null || echo '[!] Playwright install failed'
+    echo '[+] Python environment ready'
+"
+
+# ── Environment variables ────────────────────────────────────────────────
+cat >> $AGENT_HOME/.bashrc <<EOF
+
+# === General Computer Use Agent ===
+export DISPLAY=:99
+export GEMINI_API_KEY="$GEMINI_API_KEY"
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+alias agent='cd $PROJECT_DIR && source venv/bin/activate'
+EOF
+
+chown $AGENT_USER:$AGENT_USER $AGENT_HOME/.bashrc
+
+# ── .env file ────────────────────────────────────────────────────────────
+cat > $PROJECT_DIR/.env <<EOF
+GEMINI_API_KEY=$GEMINI_API_KEY
+SCREEN_WIDTH=1280
+SCREEN_HEIGHT=800
+MODEL_SCREEN_WIDTH=1440
+MODEL_SCREEN_HEIGHT=900
+EOF
+
+chown $AGENT_USER:$AGENT_USER $PROJECT_DIR/.env
+
+# ── Output directories ──────────────────────────────────────────────────
+su - $AGENT_USER -c "
+    mkdir -p '$PROJECT_DIR/outputs/research_results'
+    mkdir -p '$PROJECT_DIR/outputs/cad_exports'
+    mkdir -p '$PROJECT_DIR/outputs/screenshots'
+    mkdir -p '$PROJECT_DIR/outputs/recordings'
+"
+
+# ── Done ─────────────────────────────────────────────────────────────────
+echo ""
+echo "=== Agent deployment completed at $(date) ==="
+echo ""
+echo "To use:"
+echo "  1. SSH in:  gcloud compute ssh $AGENT_USER@$(hostname)"
+echo "  2. Run:     agent"
+echo "  3. Test:    python main.py 'Create a 30mm cube'"
+echo "  4. VNC:     connect to <external-ip>:5900"
+echo ""
+STARTUP_BODY
+}
+
+deploy_gcp() {
+    header "Deploying to Google Cloud VM"
+
+    # Check prerequisites
+    if ! command -v gcloud &>/dev/null; then
+        err "gcloud CLI not found. Install it from: https://cloud.google.com/sdk/docs/install"
+        exit 1
+    fi
+
+    # Check gcloud auth
+    if ! gcloud auth list --filter="status:ACTIVE" --format="value(account)" 2>/dev/null | head -1 | grep -q "@"; then
+        err "Not authenticated with gcloud. Run: gcloud auth login"
+        exit 1
+    fi
+
+    # Check project
+    local project
+    project=$(gcloud config get-value project 2>/dev/null || echo "")
+    if [ -z "$project" ]; then
+        err "No GCP project set. Run: gcloud config set project YOUR_PROJECT_ID"
+        exit 1
+    fi
+    log "GCP project: $project"
+
+    # Check API key
+    if [ -z "${GEMINI_API_KEY:-}" ]; then
+        err "GEMINI_API_KEY not set. The VM needs it."
+        echo "  Run: export GEMINI_API_KEY='your-key'"
+        exit 1
+    fi
+    log "GEMINI_API_KEY is set (will be injected into VM)"
+
+    # Check if VM already exists
+    if gcloud compute instances describe "$GCP_VM_NAME" --zone="$GCP_ZONE" &>/dev/null; then
+        warn "VM '$GCP_VM_NAME' already exists in zone '$GCP_ZONE'"
+        echo ""
+        echo "  Options:"
+        echo "    1. SSH in:     gcloud compute ssh $GCP_VM_NAME --zone=$GCP_ZONE"
+        echo "    2. Delete it:  gcloud compute instances delete $GCP_VM_NAME --zone=$GCP_ZONE"
+        echo "    3. Use --name: ./scripts/deploy.sh --gcp --name my-other-agent"
+        echo ""
+        exit 1
+    fi
+
+    # Generate startup script
+    info "Generating startup script..."
+    local startup_script
+    startup_script=$(generate_startup_script)
+
+    # Create the VM
+    info "Creating GCP VM: $GCP_VM_NAME ($GCP_MACHINE_TYPE) in $GCP_ZONE..."
+    gcloud compute instances create "$GCP_VM_NAME" \
+        --zone="$GCP_ZONE" \
+        --machine-type="$GCP_MACHINE_TYPE" \
+        --image-family="$GCP_IMAGE_FAMILY" \
+        --image-project="$GCP_IMAGE_PROJECT" \
+        --boot-disk-size="$GCP_DISK_SIZE" \
+        --boot-disk-type="pd-ssd" \
+        --tags="agent-vnc" \
+        --metadata=startup-script="$startup_script" \
+        --scopes="https://www.googleapis.com/auth/cloud-platform"
+
+    log "VM created: $GCP_VM_NAME"
+
+    # Create firewall rule for VNC (port 5900) if it doesn't exist
+    if ! gcloud compute firewall-rules describe allow-vnc-agent &>/dev/null 2>&1; then
+        info "Creating firewall rule for VNC (port 5900)..."
+        gcloud compute firewall-rules create allow-vnc-agent \
+            --allow=tcp:5900 \
+            --target-tags=agent-vnc \
+            --description="Allow VNC access to agent VMs" \
+            --source-ranges="0.0.0.0/0" 2>/dev/null || \
+        warn "Could not create firewall rule. Create manually or use SSH tunnel."
+    fi
+
+    # Get external IP
+    local external_ip
+    external_ip=$(gcloud compute instances describe "$GCP_VM_NAME" \
+        --zone="$GCP_ZONE" \
+        --format="get(networkInterfaces[0].accessConfigs[0].natIP)" 2>/dev/null || echo "pending")
+
+    echo ""
+    header "GCP VM Deployment Complete"
+    echo ""
+    echo "  VM Name:     $GCP_VM_NAME"
+    echo "  Zone:        $GCP_ZONE"
+    echo "  Machine:     $GCP_MACHINE_TYPE"
+    echo "  External IP: $external_ip"
+    echo ""
+    echo "  The startup script is installing dependencies now."
+    echo "  This takes ~5-10 minutes. Check progress with:"
+    echo ""
+    echo "    gcloud compute ssh $GCP_VM_NAME --zone=$GCP_ZONE -- tail -f /var/log/agent-deploy.log"
+    echo ""
+    echo "  Once ready:"
+    echo "    1. SSH:  gcloud compute ssh $GCP_VM_NAME --zone=$GCP_ZONE"
+    echo "    2. Run:  agent && python main.py 'Create a 30mm cube'"
+    echo "    3. VNC:  connect to $external_ip:5900 (or use SSH tunnel)"
+    echo ""
+    echo "  SSH tunnel for VNC (more secure):"
+    echo "    gcloud compute ssh $GCP_VM_NAME --zone=$GCP_ZONE -- -L 5900:localhost:5900"
+    echo "    Then connect VNC to localhost:5900"
+    echo ""
+    echo "  View deployment log:"
+    echo "    gcloud compute ssh $GCP_VM_NAME --zone=$GCP_ZONE -- cat /var/log/agent-deploy.log"
+    echo ""
+    echo "  Delete VM when done:"
+    echo "    gcloud compute instances delete $GCP_VM_NAME --zone=$GCP_ZONE"
+    echo ""
 }
 
 # ── System Dependencies ─────────────────────────────────────────────────────
@@ -360,40 +710,95 @@ main() {
     echo -e "${CYAN}  General Computer Use Agent - Deployment Script${NC}"
     echo -e "${CYAN}============================================================${NC}"
 
-    local mode="${1:-full}"
+    # Parse arguments
+    local mode="full"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --gcp|-g)
+                mode="gcp"
+                shift
+                ;;
+            --name)
+                GCP_VM_NAME="$2"
+                shift 2
+                ;;
+            --zone)
+                GCP_ZONE="$2"
+                shift 2
+                ;;
+            --machine-type)
+                GCP_MACHINE_TYPE="$2"
+                shift 2
+                ;;
+            --verify|-v)
+                mode="verify"
+                shift
+                ;;
+            --python|-p)
+                mode="python"
+                shift
+                ;;
+            --update|-u)
+                mode="update"
+                shift
+                ;;
+            --system|-s)
+                mode="system"
+                shift
+                ;;
+            --help|-h)
+                mode="help"
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
 
     case "$mode" in
-        --verify|-v)
+        gcp)
+            deploy_gcp
+            ;;
+        verify)
             verify_all
             ;;
-        --python|-p)
+        python)
             setup_python
             setup_env
             setup_outputs
             verify_all
             ;;
-        --update|-u)
+        update)
             update_project
             verify_all
             ;;
-        --system|-s)
+        system)
             install_system_deps
             ;;
-        --help|-h)
+        help)
             echo ""
             echo "Usage: ./scripts/deploy.sh [option]"
             echo ""
-            echo "Options:"
+            echo "Local deployment:"
             echo "  (none)       Full deployment (system + python + verify)"
             echo "  --python     Python deps only (skip system packages)"
             echo "  --system     System deps only (apt packages)"
             echo "  --update     Git pull + reinstall python deps"
             echo "  --verify     Verify existing installation"
-            echo "  --help       Show this help"
+            echo ""
+            echo "GCP deployment:"
+            echo "  --gcp                    Create a GCP VM and deploy everything"
+            echo "  --gcp --name NAME        Custom VM name (default: engineering-agent-v2)"
+            echo "  --gcp --zone ZONE        Custom zone (default: us-central1-a)"
+            echo "  --gcp --machine-type MT  Custom machine (default: e2-standard-4)"
+            echo ""
+            echo "  Requires: gcloud CLI, authenticated, GEMINI_API_KEY set"
+            echo "  Creates: Ubuntu 22.04 VM with XFCE + Xvfb + VNC + FreeCAD + agent"
             echo ""
             ;;
         *)
-            # Full deployment
+            # Full local deployment
             install_system_deps
             setup_python
             setup_env
