@@ -20,7 +20,7 @@ from core.agentic_loop import AgenticLoop
 from core.custom_tools import get_custom_declarations
 from core.executor import Executor
 from core.models import Task, TaskStatus, load_tutorial_skills
-from core.settings import SYSTEM_INSTRUCTION, PROVIDER, CLAUDE_CU_MODEL
+from core.settings import SYSTEM_INSTRUCTION
 
 
 # Agent Card — describes what this agent can do (A2A-style, kept in code)
@@ -79,22 +79,13 @@ class CADAgent:
         self.client = client
         self.executor = executor
 
-        if PROVIDER == "claude":
-            from core.claude_loop import ClaudeAgenticLoop
-            self.loop = ClaudeAgenticLoop(
-                model=CLAUDE_CU_MODEL,
-                system_instruction=SYSTEM_INSTRUCTION,
-                max_turns=120,
-            )
-            print(f"[CAD Agent] Using Claude computer use ({CLAUDE_CU_MODEL})")
-        else:
-            self.loop = AgenticLoop(
-                client,
-                system_instruction=SYSTEM_INSTRUCTION,
-                max_turns=120,
-                extra_declarations=[TASK_COMPLETE_DECLARATION],
-                custom_declarations=get_custom_declarations(),
-            )
+        self.loop = AgenticLoop(
+            client,
+            system_instruction=SYSTEM_INSTRUCTION,
+            max_turns=120,
+            extra_declarations=[TASK_COMPLETE_DECLARATION],
+            custom_declarations=get_custom_declarations(),
+        )
 
     @property
     def card(self) -> dict:

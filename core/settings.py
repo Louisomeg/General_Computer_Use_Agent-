@@ -24,17 +24,8 @@ APP_LAUNCH_DELAY = 3.0          # Pause after launching an application (used by 
 SEARCH_TYPE_DELAY = 1.0         # Pause after typing in launcher (used by freecad_functions)
 
 # Model configuration
-# Set PROVIDER to "claude" to use Claude computer use, or "gemini" for Gemini (default).
-# Override via environment: export AGENT_PROVIDER=claude
-import os
-PROVIDER = os.environ.get("AGENT_PROVIDER", "gemini").lower()
-
-# Gemini models
 DEFAULT_MODEL = "gemini-3-flash-preview"          # Computer Use agents (best for FreeCAD)
 PLANNING_MODEL = "gemini-3.1-pro-preview"          # Text-only calls (planner, dimension extraction)
-
-# Claude models
-CLAUDE_CU_MODEL = "claude-sonnet-4-20250514"       # Claude Computer Use agent
 
 # Screenshot
 SCREENSHOT_PATH = "/tmp/agent_screenshot.png"

@@ -749,7 +749,6 @@ General_Computer_Use_Agent-/
 +-- core/                        # Shared infrastructure
 |   +-- agentic_loop.py          # Multi-turn vision loop (Gemini)
 |   +-- agentic_planner.py       # Task router + shape decomposition + workflow generation
-|   +-- claude_loop.py           # Alternative agentic loop (Claude Computer Use, experimental)
 |   +-- executor.py              # Abstract Executor base class
 |   +-- desktop_executor.py      # xdotool-based desktop executor
 |   +-- browser_executor.py      # Playwright-based browser executor
@@ -795,7 +794,6 @@ General_Computer_Use_Agent-/
 | `CLICK_DELAY` | 0.3s | Pause after mouse clicks |
 | `DEFAULT_MODEL` | `gemini-3-flash-preview` | Computer Use model for all agents |
 | `PLANNING_MODEL` | `gemini-3.1-pro-preview` | Text-only model for planning and dimension extraction |
-| `PROVIDER` | `gemini` | Backend provider (`gemini` or `claude`) |
 | `SCREENSHOT_PATH` | `/tmp/agent_screenshot.png` | Temporary screenshot file path |
 
 ### Environment Variables
@@ -803,8 +801,6 @@ General_Computer_Use_Agent-/
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GEMINI_API_KEY` | Yes | Google Gemini API key |
-| `AGENT_PROVIDER` | No | Set to `claude` for Claude backend (default: `gemini`) |
-| `ANTHROPIC_API_KEY` | Only for Claude | Anthropic API key (if using Claude provider) |
 | `DISPLAY` | Yes (auto) | X11 display (usually `:0`, set automatically) |
 
 ---
@@ -852,10 +848,6 @@ The current system is built on `gemini-3-flash-preview`, which is the best avail
 4. **Reduced Planner complexity**: With a smarter CU model, the Planner could send simpler instructions (just "make a U-channel with 5mm walls") instead of generating step-by-step Thickness workflows. The model itself would know the best approach.
 
 5. **Better error recovery**: A stronger model could recognize when it's going down a wrong path and strategically undo multiple steps, rather than continuing to click on incorrect targets.
-
-### Alternative Backend: Claude Computer Use
-
-The codebase includes an experimental Claude Computer Use integration (`core/claude_loop.py`) that can be activated by setting `AGENT_PROVIDER=claude`. Claude uses pixel coordinates directly (no 0-1000 normalization) and has its own computer use tool format. This provides a drop-in alternative backend if Claude's CU capabilities prove stronger for specific tasks.
 
 ### Leveraging the Skill Learning Pipeline
 
