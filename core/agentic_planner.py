@@ -529,11 +529,10 @@ IMPORTANT: selecting the edge FIRST is called "Run-once mode" and is more reliab
 
 ## RECTANGLE WORKFLOW (from official wiki)
   1. Press key_combination("g"), then press key_combination("r") to activate
-  2. Click first corner in viewport
-  3. Click opposite diagonal corner
-  4. The rectangle is created between those two points
-  5. Press Escape to exit the rectangle tool
-  6. NEVER draw a second rectangle on the same sketch
+  2. Use drag_and_drop(x, y, destination_x, destination_y) to draw: press at first corner,
+     drag to opposite corner, release. This is MORE RELIABLE than click-click.
+  3. Press Escape to exit the rectangle tool
+  4. NEVER draw a second rectangle on the same sketch
 
 ## PAD WORKFLOW (from official wiki)
   - The Pad tool extrudes a sketch along a straight path
@@ -573,10 +572,17 @@ IMPORTANT: selecting the edge FIRST is called "Run-once mode" and is more reliab
    -> "Triple-click the input field to select all, then type the value"
 
 8. POCKET SKETCH NOT CENTERED: Inner rectangle drawn near an edge, pocket cuts through walls.
-   -> Draw the inner rectangle CENTERED on the top face. Pick the first corner roughly
-      {wall_thickness}mm inside the top-left edge and the second corner roughly
-      {wall_thickness}mm inside the bottom-right edge. The rectangle MUST be fully
-      inside the face boundary with equal margins on all sides.
+   -> Draw the inner rectangle CENTERED on the top face with equal margins on all sides.
+
+9. CLICKING AXIS LINES INSTEAD OF RECTANGLE EDGES: Sketches have red/green axis lines
+   (H_Axis, V_Axis) that cross through the center. When selecting an edge to constrain,
+   the agent clicks near the CENTER of an edge and accidentally selects an axis line instead.
+   Error message: "Not allowed: ...H_Axis" or "...V_Axis".
+   -> ALWAYS click edges near their CORNERS (endpoints), NOT in the middle.
+   -> For a horizontal edge: click near the LEFT or RIGHT end of the line.
+   -> For a vertical edge: click near the TOP or BOTTOM end of the line.
+   -> If you get "Not allowed" error, click empty space to deselect, then try clicking
+      the edge closer to one of its corners.
 
 ## VERIFICATION CHECKPOINTS (your plan MUST include these):
 - After rectangle: "VERIFY: 4 white/green lines forming a rectangle in the viewport"
@@ -596,22 +602,27 @@ IMPORTANT: selecting the edge FIRST is called "Run-once mode" and is more reliab
 - NEVER click small toolbar icons — use the menu bar text (Sketch, Part Design, Edit, etc.)
 
 ## OUTPUT FORMAT
-Return a numbered action script. Each step is ONE atomic action the agent performs.
+Return a CONCISE numbered action script. Maximum 20 steps. Each step is ONE short line.
+Do NOT write long IF_ERROR paragraphs — keep error recovery to one short sentence.
+Do NOT repeat information from the rules above — just reference the step.
+The agent reads the ENTIRE plan at once, so shorter = less confusion.
 Format:
   1. ACTION: <what to do>
-     HOW: <exact menu path or click>
-     IF_ERROR: <recovery action>
-     VERIFY: <what the screen should show>
+     HOW: <short instruction>
+     VERIFY: <what to see>
 """
 
     def _generate_cad_plan(
         self, original_request: str, cad_params: dict,
         research_summary: str = "",
     ) -> str:
-        """Use Gemini 3.1 Pro to generate an ultra-detailed CAD action plan.
+        """Generate a CAD action plan with pre-computed dimensions.
 
-        The smarter model reasons about FreeCAD's UI and generates a numbered
-        action script that the vision agent (Flash) follows mechanically.
+        For box/container tasks: uses the hardcoded fallback plan which is
+        concise, well-tested, and avoids the verbosity issues of LLM-generated
+        plans that confuse the vision agent.
+
+        For novel tasks: uses Gemini 3.1 Pro to generate a custom plan.
         """
         # Pre-compute dimensions
         width = self._parse_mm(cad_params.get("width") or
@@ -631,6 +642,22 @@ Format:
         inner_depth = depth - 2 * wall
         pocket_depth = height - wall
 
+        # For box/container tasks, use the hardcoded plan directly.
+        # It's concise and well-tested. LLM plans are too verbose (7000+ chars)
+        # and confuse the vision agent with repetitive IF_ERROR blocks.
+        lower = original_request.lower()
+        is_box = any(w in lower for w in [
+            "box", "case", "enclosure", "container", "chest", "holder",
+            "tray", "drawer", "bin",
+        ])
+
+        if is_box:
+            print(f"  [Planner] Using hardcoded box plan ({width}x{depth}x{height}mm)")
+            return self._fallback_cad_plan(
+                width, depth, height, wall, inner_width, inner_depth, pocket_depth,
+            )
+
+        # For novel tasks, use Gemini 3.1 Pro
         task_context = f"""
 TASK: {original_request}
 {f"RESEARCH CONTEXT: {research_summary}" if research_summary else ""}
@@ -642,15 +669,13 @@ DIMENSIONS (pre-computed, use these exactly):
 - Pocket depth: {pocket_depth} mm
 - Wall thickness: {wall} mm
 
-Generate the complete numbered action script for building this in FreeCAD.
-Start from a blank FreeCAD window. Include every single click and keystroke.
-Account for all common mistakes listed above.
-End with calling task_complete().
+Generate a CONCISE numbered action script (max 20 steps, short lines).
+Start from a blank FreeCAD window. End with task_complete().
 """
 
         prompt = self.FREECAD_KNOWLEDGE + "\n" + task_context
 
-        print(f"  [Planner] Generating detailed CAD plan with {PLANNING_MODEL}...")
+        print(f"  [Planner] Generating CAD plan with {PLANNING_MODEL}...")
 
         for model in self.PLAN_MODELS:
             try:
@@ -664,7 +689,7 @@ End with calling task_complete().
             except Exception as e:
                 print(f"  [Planner] Plan generation failed ({e})")
 
-        # Fallback: return a basic hardcoded plan
+        # Fallback
         print("  [Planner] Using fallback hardcoded plan")
         return self._fallback_cad_plan(
             width, depth, height, wall, inner_width, inner_depth, pocket_depth,
@@ -692,29 +717,25 @@ STEP 4: Create a sketch on XY plane.
   ACTION: In the dialog, select "XY_Plane" and click OK
   VERIFY: A sketch grid appears in the viewport
 
-STEP 5: Draw a rectangle using the keyboard shortcut.
-  ACTION: Press key_combination("g"), then press key_combination("r") to activate the rectangle tool
-  ACTION: Click a first corner in the upper-left area of the viewport
-  ACTION: Click a second corner diagonally opposite (lower-right area)
+STEP 5: Draw a rectangle using keyboard shortcut + drag.
+  ACTION: Press key_combination("g"), then press key_combination("r") to activate rectangle tool
+  ACTION: Use drag_and_drop from the upper-left area to the lower-right area of the viewport
   ACTION: Press key_combination("escape") to exit the rectangle tool
   VERIFY: You see 4 lines forming a rectangle. NEVER draw a second rectangle.
 
 STEP 6: Constrain the horizontal edge to {width} mm.
-  ACTION: Click on one HORIZONTAL edge of the rectangle (it turns green when selected)
-  ACTION: Press key_combination("k"), then press key_combination("d") to open constrain distance
-  ACTION: A dialog appears. Triple-click the input field to select all, type "{width} mm"
-  ACTION: Click the OK button in the dialog
+  ACTION: Click near the LEFT END of a HORIZONTAL edge (not the middle — avoid axis lines!)
+  The edge turns green when selected.
+  ACTION: Press key_combination("k"), then press key_combination("d")
+  ACTION: Triple-click the input field, type "{width} mm", click OK
   VERIFY: A dimension annotation showing {width} appears near the horizontal edge
-  IF_ERROR: Click "Edit" menu -> "Undo", re-select the edge, and try again
 
-STEP 7: Constrain the vertical edge to {depth} mm.
-  DO NOT close the sketch yet!
-  ACTION: Click on one VERTICAL edge of the rectangle (it turns green when selected)
-  ACTION: Press key_combination("k"), then press key_combination("d") to open constrain distance
-  ACTION: Triple-click the input field, type "{depth} mm"
-  ACTION: Click the OK button
+STEP 7: Constrain the vertical edge to {depth} mm. DO NOT close the sketch yet!
+  ACTION: Click near the TOP END of a VERTICAL edge (not the middle — avoid axis lines!)
+  The edge turns green when selected.
+  ACTION: Press key_combination("k"), then press key_combination("d")
+  ACTION: Triple-click the input field, type "{depth} mm", click OK
   VERIFY: A second dimension annotation showing {depth} appears near the vertical edge
-  IF_ERROR: Click "Edit" menu -> "Undo", re-select the edge, and try again
 
 STEP 8: Close the sketch.
   ONLY close after you see TWO dimension annotations.
@@ -740,31 +761,28 @@ STEP 12: Create a sketch on the top face.
   ACTION: Click "Sketch" in the menu bar (NOT Part Design!), then click "Create sketch"
   VERIFY: A sketch grid appears ON the top face (sketch is auto-attached to selected face)
 
-STEP 13: Draw the inner rectangle CENTERED on the top face.
-  ACTION: Press key_combination("g"), then press key_combination("r") to activate the rectangle tool
-  ACTION: Click the first corner roughly {wall} mm INSIDE the top-left edge of the face
-  ACTION: Click the second corner roughly {wall} mm INSIDE the bottom-right edge
-  IMPORTANT: The rectangle MUST be fully inside the face with equal margins on all sides.
-             Do NOT draw it near an edge — it must be CENTERED.
+STEP 13: Draw the inner rectangle CENTERED on the top face using drag.
+  ACTION: Press key_combination("g"), then press key_combination("r") to activate rectangle tool
+  ACTION: Use drag_and_drop from a point INSIDE the top-left area of the face
+          to a point INSIDE the bottom-right area. Leave equal margins on all sides.
   ACTION: Press key_combination("escape") to exit the rectangle tool
-  VERIFY: A rectangle appears INSIDE the face boundary. NEVER draw a second rectangle.
+  VERIFY: A smaller rectangle appears INSIDE the face boundary. NEVER draw a second rectangle.
 
 STEP 14: Constrain inner horizontal edge to {inner_width} mm.
-  ACTION: Click on one HORIZONTAL edge of the inner rectangle (it turns green)
-  ACTION: Press key_combination("k"), then press key_combination("d") to open constrain distance
-  ACTION: Triple-click the input field, type "{inner_width} mm"
-  ACTION: Click the OK button
+  IMPORTANT: Click near the LEFT END of a HORIZONTAL edge of the INNER rectangle.
+  Do NOT click in the middle of an edge — you will select an axis line by mistake!
+  The edge turns green when selected.
+  ACTION: Press key_combination("k"), then press key_combination("d")
+  ACTION: Triple-click the input field, type "{inner_width} mm", click OK
   VERIFY: A dimension annotation showing {inner_width} appears
-  IF_ERROR: Click "Edit" menu -> "Undo" and retry
 
-STEP 15: Constrain inner vertical edge to {inner_depth} mm.
-  DO NOT CLOSE THE SKETCH. You must constrain the vertical edge too.
-  ACTION: Click on one VERTICAL edge of the inner rectangle (it turns green)
-  ACTION: Press key_combination("k"), then press key_combination("d") to open constrain distance
-  ACTION: Triple-click the input field, type "{inner_depth} mm"
-  ACTION: Click the OK button
-  VERIFY: TWO dimension annotations are visible (one for width, one for depth)
-  IF_ERROR: Click "Edit" menu -> "Undo" and retry
+STEP 15: Constrain inner vertical edge to {inner_depth} mm. DO NOT close the sketch!
+  IMPORTANT: Click near the TOP END of a VERTICAL edge of the INNER rectangle.
+  Do NOT click in the middle — avoid axis lines!
+  The edge turns green when selected.
+  ACTION: Press key_combination("k"), then press key_combination("d")
+  ACTION: Triple-click the input field, type "{inner_depth} mm", click OK
+  VERIFY: TWO dimension annotations visible (one for width, one for depth)
 
 STEP 16: Close the sketch.
   ONLY close after BOTH dimension annotations are visible.
