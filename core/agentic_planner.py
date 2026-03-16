@@ -529,6 +529,7 @@ class Planner:
 - Create sketch is under "Sketch" menu, NOT "Part Design" menu
 - Select an edge BEFORE pressing K D to constrain it
 - Constrain BOTH width and height before closing a sketch
+- Thickness tool: select a face, then click Thickness in the left panel or Part Design menu. It hollows out a solid block — easiest way to make boxes, trays, and channels
 - Use View -> Standard views -> Fit All to re-center the object after major operations
 - Use "Edit" menu -> "Undo" if something goes wrong
 - Call task_complete() when done
@@ -588,19 +589,18 @@ class Planner:
             }
 
         elif shape == "u_channel":
-            # U = full rectangle minus center top
-            cut_w = w - 2 * wall
-            cut_h = h - wall
+            # U-channel = a box open at the top (like a tray with tall walls)
+            # Use Thickness tool — Flash already knows this from box-making
             return {
                 "box_w": w, "box_h": h, "box_d": d,
-                "cuts": [{"w": cut_w, "h": cut_h, "label": "center cutout"}],
+                "cuts": [],
                 "workflow": (
                     f"Step 1: Create body -> Sketch on XY plane -> "
-                    f"G R rectangle -> constrain to {w}x{h}mm -> Close sketch -> Pad {d}mm\n"
-                    f"Step 2: Select top face -> Sketch on face -> "
-                    f"G R rectangle centered on one edge -> constrain to {cut_w}x{cut_h}mm -> "
-                    f"Close sketch -> Pocket through all\n"
-                    f"Result: U-channel with {wall}mm thick walls"
+                    f"G R rectangle -> constrain to {w}x{h}mm -> Close sketch -> Pad {h}mm\n"
+                    f"Step 2: Click the top face of the block -> "
+                    f"Use Thickness tool (Part Design menu or left panel) -> "
+                    f"set thickness to {wall}mm -> OK\n"
+                    f"Result: U-channel / open-top tray with {wall}mm thick walls"
                 ),
             }
 
@@ -692,16 +692,15 @@ class Planner:
         parts.append(f"- Outer: {width} x {depth} x {height} mm")
         if is_hollow:
             parts.append(f"- Wall thickness: {wall} mm")
-            parts.append(f"- Inner pocket: {inner_width} x {inner_depth} mm, {pocket_depth} mm deep")
 
         parts.append("")
 
         if is_hollow:
             parts.append("## Workflow")
             parts.append("Create body -> Sketch on XY plane -> Rectangle -> "
-                         "Constrain width & height -> Close sketch -> Pad -> "
-                         "Select top face -> Sketch on face -> Inner rectangle -> "
-                         "Constrain inner width & height -> Close sketch -> Pocket")
+                         f"Constrain to {width}x{depth}mm -> Close sketch -> "
+                         f"Pad {height}mm -> Click top face -> "
+                         f"Thickness tool (set to {wall}mm) -> OK")
         else:
             parts.append("## Workflow")
             parts.append("Create body -> Sketch -> Draw profile -> "
