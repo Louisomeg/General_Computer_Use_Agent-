@@ -488,6 +488,18 @@ The agent is NOT smart — it follows instructions literally. Your plan must be 
 - 3D viewport is the large CENTER/RIGHT area
 - Console/log output at the BOTTOM
 
+## VIEW MANAGEMENT (CRITICAL — keep the object visible and centered at all times)
+The agent relies on screenshots to click on faces and edges. If the object is
+off-screen, too zoomed in, or at a bad angle, the agent CANNOT work reliably.
+- After EVERY major operation (Pad, closing a sketch, selecting a face), add:
+  "View" menu -> "Standard views" -> "Fit All" to re-center and zoom to fit.
+- Before selecting the TOP face for a pocket, ALWAYS use:
+  "View" menu -> "Standard views" -> "Top" to get a top-down view,
+  THEN "View" menu -> "Standard views" -> "Fit All" to ensure it fills the viewport.
+- After the Pocket operation, use:
+  "View" menu -> "Standard views" -> "Home" (or "Isometric") to see the 3D result.
+- NEVER let the object drift off-screen or get so zoomed in that edges are not visible.
+
 ## MENU PATHS (from official FreeCAD wiki — the agent uses menus for ALL operations)
 - Create body:        "Part Design" menu -> "Create body"
 - Create sketch:      "Sketch" menu -> "Create sketch" (NOT Part Design menu!)
@@ -707,15 +719,20 @@ STEP 9: Pad the sketch to {height} mm.
   ACTION: Click OK
   VERIFY: A 3D rectangular solid appears. The model tree shows "Pad" under "Body".
 
-STEP 10: Select the top face for the pocket.
+STEP 10: Re-center the view and switch to top-down.
+  ACTION: Click "View" menu -> "Standard views" -> "Top"
+  ACTION: Click "View" menu -> "Standard views" -> "Fit All"
+  VERIFY: You see the solid from directly above, centered and filling the viewport.
+
+STEP 11: Select the top face for the pocket.
   ACTION: Click on the LARGE FLAT face on TOP of the solid (it highlights green/blue)
   VERIFY: The face is highlighted. Do NOT click a thin side face.
 
-STEP 11: Create a sketch on the top face.
+STEP 12: Create a sketch on the top face.
   ACTION: Click "Sketch" in the menu bar (NOT Part Design!), then click "Create sketch"
   VERIFY: A sketch grid appears ON the top face (sketch is auto-attached to selected face)
 
-STEP 12: Draw the inner rectangle CENTERED on the top face.
+STEP 13: Draw the inner rectangle CENTERED on the top face.
   ACTION: Click "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
   ACTION: Click the first corner roughly {wall} mm INSIDE the top-left edge of the face
   ACTION: Click the second corner roughly {wall} mm INSIDE the bottom-right edge
@@ -724,7 +741,7 @@ STEP 12: Draw the inner rectangle CENTERED on the top face.
   ACTION: Press key_combination("escape") to exit the rectangle tool
   VERIFY: A rectangle appears INSIDE the face boundary. NEVER draw a second rectangle.
 
-STEP 13: Constrain inner horizontal edge to {inner_width} mm.
+STEP 14: Constrain inner horizontal edge to {inner_width} mm.
   ACTION: Click on one HORIZONTAL edge of the inner rectangle (it turns green)
   ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
   ACTION: Triple-click the input field, type "{inner_width} mm"
@@ -732,7 +749,7 @@ STEP 13: Constrain inner horizontal edge to {inner_width} mm.
   VERIFY: A dimension annotation showing {inner_width} appears
   IF_ERROR: Click "Edit" menu -> "Undo" and retry
 
-STEP 14: Constrain inner vertical edge to {inner_depth} mm.
+STEP 15: Constrain inner vertical edge to {inner_depth} mm.
   DO NOT CLOSE THE SKETCH. You must constrain the vertical edge too.
   ACTION: Click on one VERTICAL edge of the inner rectangle (it turns green)
   ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
@@ -741,18 +758,23 @@ STEP 14: Constrain inner vertical edge to {inner_depth} mm.
   VERIFY: TWO dimension annotations are visible (one for width, one for depth)
   IF_ERROR: Click "Edit" menu -> "Undo" and retry
 
-STEP 15: Close the sketch.
+STEP 16: Close the sketch.
   ONLY close after BOTH dimension annotations are visible.
   ACTION: Click "Sketch" menu -> "Close sketch"
 
-STEP 16: Create the pocket.
+STEP 17: Create the pocket.
   ACTION: Click "Part Design" menu, then "Create a subtractive feature", then "Pocket"
   ACTION: In the Tasks panel, triple-click the Length/Depth field, type "{pocket_depth}"
   ACTION: Click OK
   VERIFY: The 3D view shows a hollow box. The model tree shows "Pocket" under "Body".
-  IF_ERROR: If "Sub shape not found", click "Edit" -> "Undo", re-select the top face, redo steps 11-16.
+  IF_ERROR: If "Sub shape not found", click "Edit" -> "Undo", re-select the top face, redo steps 12-17.
 
-STEP 17: Task complete.
+STEP 18: Final view — see the result.
+  ACTION: Click "View" menu -> "Standard views" -> "Home"
+  ACTION: Click "View" menu -> "Standard views" -> "Fit All"
+  VERIFY: The hollow box is visible from an isometric angle, centered in the viewport.
+
+STEP 19: Task complete.
   ACTION: Call task_complete(summary="Created hollow box: {width}x{depth}x{height}mm outer, {wall}mm walls, {inner_width}x{inner_depth}mm inner pocket {pocket_depth}mm deep")
 """
 
