@@ -87,18 +87,44 @@ def double_click(x: int, y: int) -> dict:
         return {"error": str(e)}
 
 
+MACRO_LOG_PATH = "/tmp/agent_macro_log.txt"
+
+
 def execute_freecad_macro(code: str) -> dict:
     """Execute Python code in FreeCAD's Python console via macro file.
 
-    Writes the code to a temporary .py file and runs it by typing an
-    exec() command into FreeCAD's Python console using xdotool.
-    This is more reliable than typing multi-line code directly.
+    Writes the code to a temporary .py file, wrapped in try/except to
+    capture errors.  After execution, reads the log file to check for
+    errors and returns them to the agent so it can self-correct.
     """
     macro_path = "/tmp/agent_macro.py"
     try:
-        # Write the macro code to a temp file
+        # Wrap user code in try/except that writes errors to a log file.
+        # This is the ONLY way to detect FreeCAD Python errors since we
+        # execute via xdotool (no stdout/stderr access).
+        wrapped_code = (
+            "import traceback as _tb\n"
+            f"_log = open('{MACRO_LOG_PATH}', 'w')\n"
+            "try:\n"
+        )
+        # Indent each line of user code
+        for line in code.splitlines():
+            wrapped_code += f"    {line}\n"
+        wrapped_code += (
+            "    _log.write('OK\\n')\n"
+            "except Exception as _e:\n"
+            "    _log.write(f'ERROR: {_e}\\n')\n"
+            "    _log.write(_tb.format_exc())\n"
+            "finally:\n"
+            "    _log.close()\n"
+        )
+
         with open(macro_path, "w") as f:
-            f.write(code)
+            f.write(wrapped_code)
+
+        # Clear any previous log
+        with open(MACRO_LOG_PATH, "w") as f:
+            f.write("")
 
         # Focus the Python console input at the bottom of FreeCAD
         subprocess.run(
@@ -121,11 +147,34 @@ def execute_freecad_macro(code: str) -> dict:
             check=True,
         )
         subprocess.run(["xdotool", "key", "Return"], check=True)
-        time.sleep(1.0)  # Give FreeCAD time to execute
+        time.sleep(2.0)  # Give FreeCAD time to execute (increased from 1.0)
 
-        return {"success": True, "macro_path": macro_path}
+        # Read the log file to check for errors
+        try:
+            with open(MACRO_LOG_PATH, "r") as f:
+                log_content = f.read().strip()
+        except IOError:
+            log_content = ""
+
+        if not log_content:
+            # Log file empty — macro may not have finished or crashed hard
+            return {
+                "success": False,
+                "warning": "Macro produced no output — it may have crashed or is still running. "
+                           "Check the screenshot for error dialogs.",
+                "macro_path": macro_path,
+            }
+        elif log_content.startswith("ERROR:"):
+            # Macro raised a Python exception — return the full traceback
+            return {
+                "error": f"FreeCAD macro error: {log_content}",
+                "macro_path": macro_path,
+            }
+        else:
+            return {"success": True, "macro_path": macro_path}
+
     except subprocess.CalledProcessError as e:
-        return {"error": f"Macro execution failed: {e}"}
+        return {"error": f"Macro execution failed (xdotool): {e}"}
     except IOError as e:
         return {"error": f"Failed to write macro file: {e}"}
 

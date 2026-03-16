@@ -271,6 +271,7 @@ class AgenticLoop:
         self._empty_reset_done = False  # Allow one history reset on persistent empty responses
         self._text_only_retries = 0  # Counts turns where model talks but takes no action
         self._recent_actions = []  # Track recent actions for repetition detection
+        self._verification_requested = False  # Gate: force screenshot check before task_complete
         _400_recovered = False  # Allow one clean history reset on 400 error
 
         # ── Initial turn: prompt + optional demo images + screenshot ───
@@ -495,6 +496,32 @@ class AgenticLoop:
                         break
                     # CRITICAL: acknowledge the safety decision
                     extra_fields["safety_acknowledgement"] = "true"
+
+                # ── Verification gate for task_complete ────────────────
+                # The first time the agent calls task_complete(), reject it
+                # and ask the agent to verify the result visually. Only
+                # accept on the second call (after verification).
+                if (fc.name == self.finish_function_name
+                        and not self._verification_requested):
+                    self._verification_requested = True
+                    print("  [!] task_complete intercepted — requesting verification")
+                    response_parts.append(
+                        types.Part.from_function_response(
+                            name=fc.name,
+                            response={
+                                "status": "verification_required",
+                                "message": (
+                                    "BEFORE completing: Look at the screenshot carefully. "
+                                    "Does the 3D model match the task requirements? "
+                                    "Check: (1) correct shape/profile, (2) all holes present, "
+                                    "(3) dimensions look reasonable, (4) no error dialogs. "
+                                    "If everything looks correct, call task_complete() again. "
+                                    "If something is wrong, fix it first."
+                                ),
+                            },
+                        )
+                    )
+                    continue  # Skip execution, force verification
 
                 # Execute the function call
                 fc_results = executor.execute([fc])
