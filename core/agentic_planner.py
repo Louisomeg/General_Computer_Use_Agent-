@@ -500,29 +500,35 @@ off-screen, too zoomed in, or at a bad angle, the agent CANNOT work reliably.
   "View" menu -> "Standard views" -> "Home" (or "Isometric") to see the 3D result.
 - NEVER let the object drift off-screen or get so zoomed in that edges are not visible.
 
-## MENU PATHS (from official FreeCAD wiki — the agent uses menus for ALL operations)
-- Create body:        "Part Design" menu -> "Create body"
-- Create sketch:      "Sketch" menu -> "Create sketch" (NOT Part Design menu!)
-                      If a face is pre-selected, sketch is created ON that face instantly.
-- Rectangle:          "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
-- Constrain distance: "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
-- Close sketch:       "Sketch" menu -> "Close sketch"
-- Pad:                "Part Design" menu -> "Create an additive feature" -> "Pad"
-- Pocket:             "Part Design" menu -> "Create a subtractive feature" -> "Pocket"
-- Fillet:             "Part Design" menu -> "Fillet"
-- Undo:               "Edit" menu -> "Undo"
+## HOW TO ACTIVATE TOOLS
+Most operations use menus. But Rectangle and Constrain distance have 3-level
+submenus that are unreliable, so use their KEYBOARD SHORTCUTS instead:
+
+SHORTCUTS (use these — they bypass unreliable 3-level submenus):
+- Rectangle tool:     press key_combination("g"), then press key_combination("r")
+- Constrain distance: press key_combination("k"), then press key_combination("d")
+
+MENUS (use for everything else — these are 1-2 level menus that work reliably):
+- Create body:   "Part Design" menu -> "Create body"
+- Create sketch: "Sketch" menu -> "Create sketch" (NOT Part Design menu!)
+                 If a face is pre-selected, sketch is created ON that face instantly.
+- Close sketch:  "Sketch" menu -> "Close sketch"
+- Pad:           "Part Design" menu -> "Create an additive feature" -> "Pad"
+- Pocket:        "Part Design" menu -> "Create a subtractive feature" -> "Pocket"
+- Fillet:        "Part Design" menu -> "Fillet"
+- Undo:          "Edit" menu -> "Undo"
 
 ## CONSTRAINT WORKFLOW (from official wiki — "Run-once mode")
 The correct way to constrain an edge is:
   1. SELECT the edge first (click it — it turns green)
-  2. THEN invoke via menu: "Sketch" -> "Sketcher constraints" -> "Constrain distance"
+  2. THEN press key_combination("k"), then press key_combination("d")
   3. A dialog appears with an input field
   4. Type the value WITH units (e.g. "196.0 mm")
   5. Click the OK button (do NOT press Enter)
 IMPORTANT: selecting the edge FIRST is called "Run-once mode" and is more reliable.
 
 ## RECTANGLE WORKFLOW (from official wiki)
-  1. "Sketch" menu -> "Sketcher geometries" -> "Rectangle" to activate
+  1. Press key_combination("g"), then press key_combination("r") to activate
   2. Click first corner in viewport
   3. Click opposite diagonal corner
   4. The rectangle is created between those two points
@@ -545,11 +551,11 @@ IMPORTANT: selecting the edge FIRST is called "Run-once mode" and is more reliab
 
 ## COMMON MISTAKES the agent makes (your plan MUST prevent these):
 
-1. MENU NAVIGATION FAILS: Agent clicks wrong menu items or submenus don't open.
-   -> If submenu doesn't appear, click on the submenu item instead of just hovering.
+1. MENU NAVIGATION FAILS: Agent clicks wrong submenu items in 3-level menus.
+   -> Use shortcuts for Rectangle (G R) and Constrain distance (K D) to avoid this.
 
 2. CONSTRAINT WITHOUT SELECTION: Agent invokes constraint tool WITHOUT selecting edge.
-   -> SELECT edge first (green), THEN open constraint via menu.
+   -> SELECT edge first (green), THEN press K D.
 
 3. MISSING VERTICAL CONSTRAINT: Agent constrains horizontal edge then closes sketch.
    -> Explicit step: "DO NOT close sketch. Now constrain the vertical edge."
@@ -582,14 +588,16 @@ IMPORTANT: selecting the edge FIRST is called "Run-once mode" and is more reliab
 ## IMPORTANT RULES FOR THE PLAN
 - Step 1 MUST be: "Minimize the terminal window" (right-click terminal in taskbar -> Minimize)
 - The LAST step MUST be: Call task_complete(summary="description of what was built")
-- NEVER use keyboard shortcuts for FreeCAD operations. Use MENU navigation for everything.
-- The ONLY keyboard actions allowed are: Escape (cancel tool), typing values in dialogs.
+- For Rectangle: ALWAYS use shortcut G R (press G then R). NEVER navigate the 3-level menu.
+- For Constrain distance: ALWAYS use shortcut K D (press K then D). NEVER navigate the 3-level menu.
+- For everything else: use MENU navigation (Create body, Create sketch, Pad, Pocket, Close sketch, etc.)
+- The keyboard actions allowed are: G, R, K, D (shortcuts), Escape (cancel tool), typing values in dialogs.
 - Use "Edit" menu -> "Undo" for mistakes (not Ctrl+Z).
 - NEVER click small toolbar icons — use the menu bar text (Sketch, Part Design, Edit, etc.)
 
 ## OUTPUT FORMAT
 Return a numbered action script. Each step is ONE atomic action the agent performs.
-Use menu navigation for ALL operations. Format:
+Format:
   1. ACTION: <what to do>
      HOW: <exact menu path or click>
      IF_ERROR: <recovery action>
@@ -667,7 +675,7 @@ End with calling task_complete().
         width, depth, height, wall, inner_width, inner_depth, pocket_depth,
     ) -> str:
         """Hardcoded fallback plan if Gemini 3.1 Pro is unavailable."""
-        return f"""## ACTION SCRIPT — Follow each step exactly. Use menus for ALL operations.
+        return f"""## ACTION SCRIPT — Follow each step exactly. Use G R for rectangle, K D for constraints, menus for everything else.
 
 STEP 1: Minimize the terminal window.
   ACTION: Right-click the terminal in the TASKBAR (top bar) and click "Minimize"
@@ -684,8 +692,8 @@ STEP 4: Create a sketch on XY plane.
   ACTION: In the dialog, select "XY_Plane" and click OK
   VERIFY: A sketch grid appears in the viewport
 
-STEP 5: Draw a rectangle using the menu.
-  ACTION: Click "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
+STEP 5: Draw a rectangle using the keyboard shortcut.
+  ACTION: Press key_combination("g"), then press key_combination("r") to activate the rectangle tool
   ACTION: Click a first corner in the upper-left area of the viewport
   ACTION: Click a second corner diagonally opposite (lower-right area)
   ACTION: Press key_combination("escape") to exit the rectangle tool
@@ -693,7 +701,7 @@ STEP 5: Draw a rectangle using the menu.
 
 STEP 6: Constrain the horizontal edge to {width} mm.
   ACTION: Click on one HORIZONTAL edge of the rectangle (it turns green when selected)
-  ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
+  ACTION: Press key_combination("k"), then press key_combination("d") to open constrain distance
   ACTION: A dialog appears. Triple-click the input field to select all, type "{width} mm"
   ACTION: Click the OK button in the dialog
   VERIFY: A dimension annotation showing {width} appears near the horizontal edge
@@ -702,7 +710,7 @@ STEP 6: Constrain the horizontal edge to {width} mm.
 STEP 7: Constrain the vertical edge to {depth} mm.
   DO NOT close the sketch yet!
   ACTION: Click on one VERTICAL edge of the rectangle (it turns green when selected)
-  ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
+  ACTION: Press key_combination("k"), then press key_combination("d") to open constrain distance
   ACTION: Triple-click the input field, type "{depth} mm"
   ACTION: Click the OK button
   VERIFY: A second dimension annotation showing {depth} appears near the vertical edge
@@ -733,7 +741,7 @@ STEP 12: Create a sketch on the top face.
   VERIFY: A sketch grid appears ON the top face (sketch is auto-attached to selected face)
 
 STEP 13: Draw the inner rectangle CENTERED on the top face.
-  ACTION: Click "Sketch" menu -> "Sketcher geometries" -> "Rectangle"
+  ACTION: Press key_combination("g"), then press key_combination("r") to activate the rectangle tool
   ACTION: Click the first corner roughly {wall} mm INSIDE the top-left edge of the face
   ACTION: Click the second corner roughly {wall} mm INSIDE the bottom-right edge
   IMPORTANT: The rectangle MUST be fully inside the face with equal margins on all sides.
@@ -743,7 +751,7 @@ STEP 13: Draw the inner rectangle CENTERED on the top face.
 
 STEP 14: Constrain inner horizontal edge to {inner_width} mm.
   ACTION: Click on one HORIZONTAL edge of the inner rectangle (it turns green)
-  ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
+  ACTION: Press key_combination("k"), then press key_combination("d") to open constrain distance
   ACTION: Triple-click the input field, type "{inner_width} mm"
   ACTION: Click the OK button
   VERIFY: A dimension annotation showing {inner_width} appears
@@ -752,7 +760,7 @@ STEP 14: Constrain inner horizontal edge to {inner_width} mm.
 STEP 15: Constrain inner vertical edge to {inner_depth} mm.
   DO NOT CLOSE THE SKETCH. You must constrain the vertical edge too.
   ACTION: Click on one VERTICAL edge of the inner rectangle (it turns green)
-  ACTION: Click "Sketch" menu -> "Sketcher constraints" -> "Constrain distance"
+  ACTION: Press key_combination("k"), then press key_combination("d") to open constrain distance
   ACTION: Triple-click the input field, type "{inner_depth} mm"
   ACTION: Click the OK button
   VERIFY: TWO dimension annotations are visible (one for width, one for depth)
