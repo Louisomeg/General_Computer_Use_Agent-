@@ -812,9 +812,9 @@ rm -rf ~/.FreeCAD/recovery/*
 
 ## Authors
 
-- **Louis** -- Core framework, desktop executor, CAD agent, agentic loop, planner, macro engine
+- **Louis** -- , desktop executor, CAD agent, , macro engine
 - **Emmanuel** -- Research agent, browser executor, documentation agent, parallel research
-
+- **George** -- Core framework, agentic loop, planner 
 ---
 
 ## License
