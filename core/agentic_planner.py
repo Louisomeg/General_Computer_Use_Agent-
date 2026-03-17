@@ -654,6 +654,13 @@ class Planner:
   front_face = max(body.Shape.Faces, key=lambda f: f.CenterOfMass.y)
 - Use body.Tip as the AttachmentSupport object (always points to latest feature).
 - For holes: use Circle + Pocket ThroughAll (not PartDesign::Hole).
+- CRITICAL: EVERY sketch MUST set AttachmentSupport and MapMode:
+  sketch.AttachmentSupport = [(doc.getObject('XY_Plane'), '')]  # first sketch
+  sketch.MapMode = 'FlatFace'
+  If you skip these, FreeCAD shows a blocking "Attach sketch" dialog.
+- For sketches on an existing face:
+  sketch.AttachmentSupport = [(body.Tip, 'FaceName')]
+  sketch.MapMode = 'FlatFace'
 
 ### General Tips
 - Use View → Standard views → Fit All to re-center the object after major operations
@@ -716,6 +723,60 @@ RULES:
 - Each sketch should contain only ONE piece of geometry (one rectangle OR one circle)
 - The agent is a vision model — keep workflows to 3-6 steps maximum
 - PREFER macros over GUI clicking — they give exact dimensions every time
+
+## CORRECT Macro Templates (FreeCAD 1.0 API)
+Every macro MUST use these patterns. NEVER omit AttachmentSupport or MapMode.
+
+### Step 1: Create document + body + first sketch + pad
+```python
+execute_freecad_macro(\"\"\"
+import FreeCAD, Part, Sketcher
+doc = FreeCAD.newDocument('Design')
+body = doc.addObject('PartDesign::Body', 'Body')
+sketch = body.newObject('Sketcher::SketchObject', 'Sketch')
+sketch.AttachmentSupport = [(doc.getObject('XY_Plane'), '')]
+sketch.MapMode = 'FlatFace'
+# Rectangle from (0,0) to (WIDTH, DEPTH)
+sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(0,0,0), FreeCAD.Vector(WIDTH,0,0)))
+sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(WIDTH,0,0), FreeCAD.Vector(WIDTH,DEPTH,0)))
+sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(WIDTH,DEPTH,0), FreeCAD.Vector(0,DEPTH,0)))
+sketch.addGeometry(Part.LineSegment(FreeCAD.Vector(0,DEPTH,0), FreeCAD.Vector(0,0,0)))
+sketch.addConstraint(Sketcher.Constraint('Coincident',0,2,1,1))
+sketch.addConstraint(Sketcher.Constraint('Coincident',1,2,2,1))
+sketch.addConstraint(Sketcher.Constraint('Coincident',2,2,3,1))
+sketch.addConstraint(Sketcher.Constraint('Coincident',3,2,0,1))
+pad = body.newObject('PartDesign::Pad', 'Pad')
+pad.Profile = sketch
+pad.Length = HEIGHT
+doc.recompute()
+FreeCAD.Gui.SendMsgToActiveView("ViewFit")
+\"\"\")
+```
+
+### Subsequent sketch on a face (pocket, hole, etc.)
+```python
+execute_freecad_macro(\"\"\"
+import FreeCAD, Part, Sketcher
+doc = FreeCAD.activeDocument()
+body = doc.getObject('Body')
+# Find the top face dynamically — NEVER hardcode Face6 etc.
+top_face = max(body.Shape.Faces, key=lambda f: f.CenterOfMass.z)
+top_face_name = 'Face' + str(list(body.Shape.Faces).index(top_face) + 1)
+sketch2 = body.newObject('Sketcher::SketchObject', 'Sketch001')
+sketch2.AttachmentSupport = [(body.Tip, top_face_name)]
+sketch2.MapMode = 'FlatFace'
+# Draw geometry on this face ...
+sketch2.addGeometry(Part.Circle(FreeCAD.Vector(X,Y,0), FreeCAD.Vector(0,0,1), RADIUS))
+pocket = body.newObject('PartDesign::Pocket', 'Pocket')
+pocket.Profile = sketch2
+pocket.Type = 1  # 0=Dimension, 1=ThroughAll
+doc.recompute()
+FreeCAD.Gui.SendMsgToActiveView("ViewFit")
+\"\"\")
+```
+
+CRITICAL: Every sketch MUST have AttachmentSupport and MapMode set, or FreeCAD
+will show a blocking "Attach sketch" dialog that wastes agent turns.
 """
 
     def _generate_cad_goal(

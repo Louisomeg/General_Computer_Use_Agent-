@@ -127,6 +127,16 @@ Applications menu or click icons you can see on screen.
   Macro 2: find face + create pocket sketch + pocket. Check screenshot.
   Macro 3: find face + create hole circle + pocket through-all. Check screenshot.
   NEVER put the entire design in one giant macro — if one line fails, everything after fails silently.
+- CRITICAL: EVERY sketch in a macro MUST set AttachmentSupport and MapMode:
+  First sketch:
+    sketch.AttachmentSupport = [(doc.getObject('XY_Plane'), '')]
+    sketch.MapMode = 'FlatFace'
+  Sketch on existing face:
+    top_face = max(body.Shape.Faces, key=lambda f: f.CenterOfMass.z)
+    face_name = 'Face' + str(list(body.Shape.Faces).index(top_face) + 1)
+    sketch.AttachmentSupport = [(body.Tip, face_name)]
+    sketch.MapMode = 'FlatFace'
+  If you skip these, FreeCAD shows a blocking "Attach sketch" dialog!
 
 ## Important Rules
 - Do NOT use browser-related functions (navigate, search, go_back, go_forward).
@@ -214,6 +224,16 @@ If the app is already running, click its name in the TASKBAR at the top.
   Macro 2: find face + create pocket sketch + pocket. Check screenshot.
   Macro 3: find face + create hole circle + pocket through-all. Check screenshot.
   NEVER put the entire design in one giant macro.
+- CRITICAL: EVERY sketch in a macro MUST set AttachmentSupport and MapMode:
+  First sketch:
+    sketch.AttachmentSupport = [(doc.getObject('XY_Plane'), '')]
+    sketch.MapMode = 'FlatFace'
+  Sketch on existing face:
+    top_face = max(body.Shape.Faces, key=lambda f: f.CenterOfMass.z)
+    face_name = 'Face' + str(list(body.Shape.Faces).index(top_face) + 1)
+    sketch.AttachmentSupport = [(body.Tip, face_name)]
+    sketch.MapMode = 'FlatFace'
+  If you skip these, FreeCAD shows a blocking "Attach sketch" dialog!
 
 ## Important Rules
 - ALWAYS observe the screenshot carefully before acting.
