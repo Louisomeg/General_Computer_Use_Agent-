@@ -101,9 +101,10 @@ max_turns=30
 class Planner:
     """Routes user goals to the right agent."""
 
-    def __init__(self, client: genai.Client, executor: Executor = None):
+    def __init__(self, client, executor: Executor = None, backend: str = "gemini"):
         self.client = client
         self.executor = executor  # only needed for agents that use desktop (cad)
+        self.backend = backend  # "gemini" or "claude"
 
     def run(self, user_request: str) -> Task:
         """Plan and execute a user request end-to-end."""
@@ -176,6 +177,7 @@ class Planner:
         try:
             cad_agent = get_agent(
                 "cad", client=self.client, executor=self.executor,
+                backend=self.backend,
             )
             result = cad_agent.execute(task)
         except Exception as e:
@@ -197,25 +199,91 @@ class Planner:
             print(f"  Error:  {result.error}")
         print(f"{'='*60}\n")
 
+    def _llm_generate_params(self, prompt: str) -> dict:
+        """Call any available LLM to extract key=value parameters from a prompt.
+
+        Tries Gemini first, then Claude. Returns empty dict on failure.
+        """
+        # Try Gemini
+        if self.client is not None:
+            for model in self.PLAN_MODELS:
+                try:
+                    response = self.client.models.generate_content(
+                        model=model, contents=prompt,
+                    )
+                    params = self._parse_kv_lines(response.text)
+                    if params:
+                        return params
+                except Exception as e:
+                    print(f"  [Planner] {model} params failed ({e})")
+
+        # Try Claude
+        if self.backend == "claude":
+            try:
+                import anthropic
+                claude = anthropic.Anthropic()
+                response = claude.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=1024,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                text = response.content[0].text if response.content else ""
+                params = self._parse_kv_lines(text)
+                if params:
+                    return params
+            except Exception as e:
+                print(f"  [Planner] Claude params failed ({e})")
+
+        return {}
+
+    @staticmethod
+    def _parse_kv_lines(text: str) -> dict:
+        """Parse key=value pairs from LLM output text."""
+        params = {}
+        for line in text.strip().split("\n"):
+            line = line.strip()
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                params[k.strip()] = v.strip()
+        return params
+
     # Models to try for planning, in order.  Planning is text-only so any
     # model works.  If the primary model has no quota (e.g. free tier), we
     # automatically try the next one.
     PLAN_MODELS = [PLANNING_MODEL]
 
     def _plan(self, user_request: str) -> tuple[str, str, dict]:
-        """Use Gemini to decide agent + params. Falls back to parsing if API fails."""
+        """Use LLM to decide agent + params. Falls back to parsing if API fails."""
         prompt = PLANNER_PROMPT.format(agents=", ".join(list_agents()))
         prompt += f"\n\nUser: \"{user_request}\""
 
-        for model in self.PLAN_MODELS:
+        # Try Gemini planning first (if client available)
+        if self.client is not None:
+            for model in self.PLAN_MODELS:
+                try:
+                    response = self.client.models.generate_content(
+                        model=model,
+                        contents=prompt,
+                    )
+                    return self._parse_plan(response.text, user_request)
+                except Exception as e:
+                    print(f"  [Planner] {model} failed ({e})")
+
+        # Try Claude planning (if using Claude backend)
+        if self.backend == "claude":
             try:
-                response = self.client.models.generate_content(
-                    model=model,
-                    contents=prompt,
+                import anthropic
+                claude = anthropic.Anthropic()
+                response = claude.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=1024,
+                    messages=[{"role": "user", "content": prompt}],
                 )
-                return self._parse_plan(response.text, user_request)
+                text = response.content[0].text if response.content else ""
+                if text:
+                    return self._parse_plan(text, user_request)
             except Exception as e:
-                print(f"  [Planner] {model} failed ({e})")
+                print(f"  [Planner] Claude planning failed ({e})")
 
         print("  [Planner] All models failed, using keyword fallback")
         return self._fallback_plan(user_request)
@@ -287,7 +355,11 @@ class Planner:
     def _build_agent_kwargs(self, agent_name: str) -> dict:
         """Build the kwargs needed to instantiate the agent."""
         if agent_name == "cad":
-            return {"client": self.client, "executor": self.executor}
+            return {
+                "client": self.client,
+                "executor": self.executor,
+                "backend": self.backend,
+            }
         elif agent_name == "research":
             return {"client": self.client}
         else:
@@ -363,22 +435,10 @@ class Planner:
             "wall_thickness=5mm\n"
         )
 
-        for model in self.PLAN_MODELS:
-            try:
-                response = self.client.models.generate_content(
-                    model=model, contents=prompt,
-                )
-                params = {}
-                for line in response.text.strip().split("\n"):
-                    line = line.strip()
-                    if "=" in line and not line.startswith("#"):
-                        k, v = line.split("=", 1)
-                        params[k.strip()] = v.strip()
-                if params:
-                    print(f"  [Planner] LLM-generated defaults: {params}")
-                    return params
-            except Exception as e:
-                print(f"  [Planner] Default dimension generation failed ({e})")
+        result_params = self._llm_generate_params(prompt)
+        if result_params:
+            print(f"  [Planner] LLM-generated defaults: {result_params}")
+            return result_params
 
         # Hardcoded fallback for common objects
         lower = request.lower()
@@ -475,6 +535,7 @@ class Planner:
         try:
             cad_agent = get_agent(
                 "cad", client=self.client, executor=self.executor,
+                backend=self.backend,
             )
             cad_result = cad_agent.execute(cad_task)
         except Exception as e:
@@ -527,21 +588,9 @@ class Planner:
             "wall_thickness=5mm"
         )
 
-        for model in self.PLAN_MODELS:
-            try:
-                response = self.client.models.generate_content(
-                    model=model, contents=prompt,
-                )
-                params = {}
-                for line in response.text.strip().split("\n"):
-                    line = line.strip()
-                    if "=" in line and not line.startswith("#"):
-                        k, v = line.split("=", 1)
-                        params[k.strip()] = v.strip()
-                if params:
-                    return params
-            except Exception as e:
-                print(f"  [Planner] Dimension extraction failed ({e})")
+        result_params = self._llm_generate_params(prompt)
+        if result_params:
+            return result_params
 
         # Fallback: pick first few data points with concrete values
         params = {}
@@ -718,17 +767,35 @@ RULES:
         )
 
         workflow = None
-        for model in self.PLAN_MODELS:
+        # Try Gemini first
+        if self.client is not None:
+            for model in self.PLAN_MODELS:
+                try:
+                    response = self.client.models.generate_content(
+                        model=model, contents=workflow_prompt,
+                    )
+                    workflow = response.text.strip()
+                    if workflow:
+                        print(f"  [Planner] LLM-generated workflow ({len(workflow)} chars)")
+                        break
+                except Exception as e:
+                    print(f"  [Planner] Workflow generation failed ({e})")
+
+        # Try Claude if Gemini unavailable
+        if not workflow and self.backend == "claude":
             try:
-                response = self.client.models.generate_content(
-                    model=model, contents=workflow_prompt,
+                import anthropic
+                claude = anthropic.Anthropic()
+                response = claude.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=2048,
+                    messages=[{"role": "user", "content": workflow_prompt}],
                 )
-                workflow = response.text.strip()
+                workflow = response.content[0].text.strip() if response.content else ""
                 if workflow:
-                    print(f"  [Planner] LLM-generated workflow ({len(workflow)} chars)")
-                    break
+                    print(f"  [Planner] Claude-generated workflow ({len(workflow)} chars)")
             except Exception as e:
-                print(f"  [Planner] Workflow generation failed ({e})")
+                print(f"  [Planner] Claude workflow generation failed ({e})")
 
         # Build the final goal prompt
         parts = [f"## Goal\n{original_request}\n"]

@@ -27,6 +27,13 @@ SEARCH_TYPE_DELAY = 1.0         # Pause after typing in launcher (used by freeca
 DEFAULT_MODEL = "gemini-3-flash-preview"          # Computer Use agents (best for FreeCAD)
 PLANNING_MODEL = "gemini-3.1-pro-preview"          # Text-only calls (planner, dimension extraction)
 
+# Claude Computer Use (alternative backend)
+# Set CAD_BACKEND=claude and ANTHROPIC_API_KEY to use Claude instead of Gemini.
+# Available Claude models for Computer Use:
+#   claude-sonnet-4-20250514  — best balance of speed + accuracy (recommended)
+#   claude-opus-4-20250514    — highest accuracy, slower + more expensive
+CLAUDE_MODEL = "claude-sonnet-4-20250514"
+
 # Screenshot
 SCREENSHOT_PATH = "/tmp/agent_screenshot.png"
 

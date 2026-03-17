@@ -6,6 +6,7 @@ Usage:
     python main.py "Create a 30mm cube"               # full pipeline (research if needed)
     python main.py --cad "Make a bracket for M6 bolt" # CAD only, skip research
     python main.py --cad --dims hole_diameter=6.6mm wall_thickness=3mm "L-bracket"
+    python main.py --claude --cad "Make a bracket"    # use Claude Computer Use backend
 """
 import os
 import shutil
@@ -27,20 +28,25 @@ def _clear_pycache():
 
 
 def _parse_args(argv):
-    """Parse CLI arguments into mode, request, and optional dimensions.
+    """Parse CLI arguments into mode, request, dimensions, and backend.
 
     Returns:
-        (mode, request, dims) where mode is 'full' or 'cad-only',
-        request is the task string, and dims is a dict of dimensions.
+        (mode, request, dims, backend) where mode is 'full' or 'cad-only',
+        request is the task string, dims is a dict, and backend is 'gemini' or 'claude'.
     """
     mode = "full"
     dims = {}
+    backend = "gemini"
     remaining = []
     i = 1  # skip argv[0]
     while i < len(argv):
         arg = argv[i]
         if arg in ("--cad", "--cad-only"):
             mode = "cad-only"
+        elif arg == "--claude":
+            backend = "claude"
+        elif arg == "--gemini":
+            backend = "gemini"
         elif arg == "--dims":
             # Consume all following key=value pairs until next flag or end
             i += 1
@@ -54,27 +60,44 @@ def _parse_args(argv):
         i += 1
 
     request = " ".join(remaining) if remaining else ""
-    return mode, request, dims
+    return mode, request, dims, backend
 
 
 def main():
     _clear_pycache()
 
-    if not os.environ.get("GEMINI_API_KEY"):
-        print("ERROR: Set GEMINI_API_KEY first!")
-        print('  export GEMINI_API_KEY="your-key"')
-        sys.exit(1)
+    if len(sys.argv) > 1:
+        mode, request, dims, backend = _parse_args(sys.argv)
+    else:
+        mode, request, dims, backend = "full", "", {}, "gemini"
 
-    client = genai.Client()
+    # Set backend via environment so agents pick it up
+    if backend == "claude":
+        os.environ["CAD_BACKEND"] = "claude"
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            print("ERROR: Set ANTHROPIC_API_KEY for Claude backend!")
+            print('  export ANTHROPIC_API_KEY="your-key"')
+            sys.exit(1)
+        print("[Main] Using Claude Computer Use backend")
+        # Create a dummy client (Claude doesn't need google genai client)
+        client = None
+    else:
+        if not os.environ.get("GEMINI_API_KEY"):
+            print("ERROR: Set GEMINI_API_KEY first!")
+            print('  export GEMINI_API_KEY="your-key"')
+            sys.exit(1)
+        client = genai.Client()
+        print("[Main] Using Gemini Computer Use backend")
+
     executor = DesktopExecutor()
-    planner = Planner(client, executor)
+    planner = Planner(client, executor, backend=backend)
 
     if len(sys.argv) > 1:
-        mode, request, dims = _parse_args(sys.argv)
         if not request:
             print("ERROR: No task description provided.")
             print('  Usage: python main.py "Create a 30mm cube"')
             print('         python main.py --cad "Make a bracket"')
+            print('         python main.py --claude --cad "Make a bracket"')
             sys.exit(1)
 
         if mode == "cad-only":

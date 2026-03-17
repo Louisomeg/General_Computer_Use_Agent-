@@ -2,6 +2,7 @@
 # CAD Agent — FreeCAD design agent
 # =============================================================================
 # Drives FreeCAD through an agentic loop with vision-based interaction.
+# Supports both Gemini (default) and Claude Computer Use backends.
 #
 # Usage:
 #   from agents.registry import get_agent
@@ -10,14 +11,14 @@
 #   agent = get_agent("cad", client=client, executor=executor)
 #   task = Task(description="Create an M10x30 hex bolt", params={...})
 #   result = agent.execute(task)
+#
+#   # Claude backend:
+#   agent = get_agent("cad", client=client, executor=executor, backend="claude")
 
+import os
 import subprocess
 
-from google.genai import Client, types
-
 from agents.registry import register
-from core.agentic_loop import AgenticLoop
-from core.custom_tools import get_custom_declarations
 from core.executor import Executor
 from core.models import Task, TaskStatus, load_tutorial_skills
 from core.settings import SYSTEM_INSTRUCTION
@@ -66,43 +67,73 @@ CAD_STAGE_BUDGETS = [
 ]
 
 
-# Function declaration so the CAD agent can signal "I'm done"
-TASK_COMPLETE_DECLARATION = types.FunctionDeclaration(
-    name="task_complete",
-    description=(
-        "Call this when you have finished the design task or when you need to stop. "
-        "Include a brief summary of what was created or what went wrong."
-    ),
-    parameters_json_schema={
-        "type": "object",
-        "properties": {
-            "summary": {
-                "type": "string",
-                "description": "Brief description of what was created or accomplished",
-            },
-        },
-        "required": ["summary"],
-    },
-)
-
-
 @register("cad")
 class CADAgent:
-    """FreeCAD design agent that drives the desktop via an agentic loop."""
+    """FreeCAD design agent that drives the desktop via an agentic loop.
 
-    def __init__(self, client: Client, executor: Executor):
+    Supports two backends:
+    - "gemini" (default): Uses Google's Gemini Computer Use API
+    - "claude": Uses Anthropic's Claude Computer Use API
+    """
+
+    def __init__(self, client, executor: Executor, backend: str = None):
         self.client = client
         self.executor = executor
+        self.backend = backend or os.environ.get("CAD_BACKEND", "gemini")
+
+        if self.backend == "claude":
+            self._init_claude_loop()
+        else:
+            self._init_gemini_loop()
+
+    def _init_gemini_loop(self):
+        """Initialize the Gemini-based agentic loop."""
+        from google.genai import types
+        from core.agentic_loop import AgenticLoop
+        from core.custom_tools import get_custom_declarations
+
+        task_complete_decl = types.FunctionDeclaration(
+            name="task_complete",
+            description=(
+                "Call this when you have finished the design task or when you need to stop. "
+                "Include a brief summary of what was created or what went wrong."
+            ),
+            parameters_json_schema={
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "Brief description of what was created or accomplished",
+                    },
+                },
+                "required": ["summary"],
+            },
+        )
 
         self.loop = AgenticLoop(
-            client,
+            self.client,
             system_instruction=SYSTEM_INSTRUCTION,
             max_turns=120,
-            extra_declarations=[TASK_COMPLETE_DECLARATION],
+            extra_declarations=[task_complete_decl],
             custom_declarations=get_custom_declarations(),
             stage_budgets=CAD_STAGE_BUDGETS,
             verify_before_complete=True,
         )
+        print(f"[CAD Agent] Backend: Gemini Computer Use")
+
+    def _init_claude_loop(self):
+        """Initialize the Claude-based agentic loop."""
+        from core.claude_loop import ClaudeAgenticLoop
+
+        model = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+        self.loop = ClaudeAgenticLoop(
+            model_name=model,
+            system_instruction=SYSTEM_INSTRUCTION,
+            max_turns=120,
+            stage_budgets=CAD_STAGE_BUDGETS,
+            verify_before_complete=True,
+        )
+        print(f"[CAD Agent] Backend: Claude Computer Use ({model})")
 
     @property
     def card(self) -> dict:
@@ -172,24 +203,19 @@ class CADAgent:
                 parts.append(f"- {label}: {value}")
             parts.append("")
 
-        # NOTE: Demo references and tutorial skills are DISABLED to avoid
-        # prompt interference.  The detailed action plan from the planner
-        # already contains all the FreeCAD knowledge the agent needs.
-        # Re-enable these once we confirm the base workflow works.
-        #
-        # # Demonstration reference (visual examples from processed tutorials)
-        # demo_images = []
-        # demo_result = self._build_demo_reference(task)
-        # if demo_result:
-        #     demo_text, demo_images = demo_result
-        #     parts.append(demo_text)
-        #
-        # # Tutorial reference (tips, troubleshooting from YAML skills)
-        # reference = self._build_reference_from_tutorials()
-        # if reference:
-        #     parts.append(reference)
+        # Demonstration reference (visual examples from processed tutorials)
+        demo_images = []
+        demo_result = self._build_demo_reference(task)
+        if demo_result:
+            demo_text, demo_images = demo_result
+            parts.append(demo_text)
 
-        return "\n".join(parts), []
+        # Tutorial reference (tips, troubleshooting from YAML skills)
+        reference = self._build_reference_from_tutorials()
+        if reference:
+            parts.append(reference)
+
+        return "\n".join(parts), demo_images
 
     def _build_demo_reference(self, task: Task) -> tuple[str, list[bytes]] | None:
         """Find and format a relevant demonstration for the task.

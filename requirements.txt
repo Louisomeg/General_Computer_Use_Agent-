@@ -1,4 +1,5 @@
 google-genai
+anthropic
 termcolor
 pyyaml
 playwright
