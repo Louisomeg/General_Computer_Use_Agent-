@@ -6,7 +6,7 @@ desktop interaction. Shares the same Executor and screenshot infrastructure
 as the Gemini loop.
 
 Usage:
-    loop = ClaudeAgenticLoop(model_name="claude-sonnet-4-20250514")
+    loop = ClaudeAgenticLoop()
     loop.agentic_loop("open freecad and create a cube", executor)
 """
 import base64
@@ -26,7 +26,8 @@ from core.screenshot import capture_desktop_screenshot
 from core.settings import (
     MODEL_SCREEN_WIDTH, MODEL_SCREEN_HEIGHT,
     SCREEN_WIDTH, SCREEN_HEIGHT,
-    SYSTEM_INSTRUCTION, TYPING_DELAY, CLICK_DELAY,
+    CLAUDE_SYSTEM_INSTRUCTION, CLAUDE_MODEL,
+    TYPING_DELAY, CLICK_DELAY,
 )
 
 # Claude Computer Use tool version
@@ -46,7 +47,7 @@ class ClaudeAgenticLoop:
 
     def __init__(
         self,
-        model_name: str = "claude-sonnet-4-20250514",
+        model_name: str = CLAUDE_MODEL,
         system_instruction: Optional[str] = None,
         screenshot_fn: Optional[Callable[[], bytes]] = None,
         max_turns: int = 0,
@@ -59,7 +60,7 @@ class ClaudeAgenticLoop:
     ):
         self.client = anthropic.Anthropic()  # Uses ANTHROPIC_API_KEY env var
         self.model_name = model_name
-        self.system_instruction = system_instruction or SYSTEM_INSTRUCTION
+        self.system_instruction = system_instruction or CLAUDE_SYSTEM_INSTRUCTION
         self.screenshot_fn = screenshot_fn or capture_desktop_screenshot
         self.max_turns = max_turns
         self.finish_function_name = finish_function_name

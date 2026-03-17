@@ -21,7 +21,7 @@ import subprocess
 from agents.registry import register
 from core.executor import Executor
 from core.models import Task, TaskStatus, load_tutorial_skills
-from core.settings import SYSTEM_INSTRUCTION
+from core.settings import SYSTEM_INSTRUCTION, CLAUDE_SYSTEM_INSTRUCTION, CLAUDE_MODEL
 
 
 # Agent Card — describes what this agent can do (A2A-style, kept in code)
@@ -125,10 +125,10 @@ class CADAgent:
         """Initialize the Claude-based agentic loop."""
         from core.claude_loop import ClaudeAgenticLoop
 
-        model = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+        model = os.environ.get("CLAUDE_MODEL", CLAUDE_MODEL)
         self.loop = ClaudeAgenticLoop(
             model_name=model,
-            system_instruction=SYSTEM_INSTRUCTION,
+            system_instruction=CLAUDE_SYSTEM_INSTRUCTION,
             max_turns=120,
             stage_budgets=CAD_STAGE_BUDGETS,
             verify_before_complete=True,

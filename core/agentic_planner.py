@@ -17,7 +17,7 @@ from google import genai
 from agents.registry import get_agent, list_agents
 from core.executor import Executor
 from core.models import Task, TaskStatus
-from core.settings import DEFAULT_MODEL, PLANNING_MODEL
+from core.settings import DEFAULT_MODEL, PLANNING_MODEL, CLAUDE_PLANNING_MODEL
 
 # Import agent modules so @register decorators fire
 import agents.cad_agent       # noqa: F401
@@ -223,7 +223,7 @@ class Planner:
                 import anthropic
                 claude = anthropic.Anthropic()
                 response = claude.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model=CLAUDE_PLANNING_MODEL,
                     max_tokens=1024,
                     messages=[{"role": "user", "content": prompt}],
                 )
@@ -275,7 +275,7 @@ class Planner:
                 import anthropic
                 claude = anthropic.Anthropic()
                 response = claude.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model=CLAUDE_PLANNING_MODEL,
                     max_tokens=1024,
                     messages=[{"role": "user", "content": prompt}],
                 )
@@ -787,7 +787,7 @@ RULES:
                 import anthropic
                 claude = anthropic.Anthropic()
                 response = claude.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model=CLAUDE_PLANNING_MODEL,
                     max_tokens=2048,
                     messages=[{"role": "user", "content": workflow_prompt}],
                 )
