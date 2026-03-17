@@ -30,8 +30,9 @@ from core.settings import (
     TYPING_DELAY, CLICK_DELAY,
 )
 
-# Claude Computer Use tool version
+# Claude Computer Use tool version and beta flag
 COMPUTER_TOOL_VERSION = "computer_20250124"
+COMPUTER_USE_BETA = "computer-use-2025-01-24"
 
 
 class ClaudeAgenticLoop:
@@ -367,12 +368,13 @@ class ClaudeAgenticLoop:
 
             # ── Get Claude response ──────────────────────────────────────
             try:
-                response = self.client.messages.create(
+                response = self.client.beta.messages.create(
                     model=self.model_name,
                     max_tokens=self.max_output_tokens,
                     system=self.system_instruction,
                     tools=tools,
                     messages=messages,
+                    betas=[COMPUTER_USE_BETA],
                 )
             except anthropic.APIError as e:
                 termcolor.cprint(f"Claude API error: {e}", color="red")
