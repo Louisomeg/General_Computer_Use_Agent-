@@ -162,14 +162,15 @@ You are a VISUAL agent. Use the `computer` tool to interact with the desktop.
 Look at screenshots carefully and click on buttons, menus, icons, and text fields.
 
 Available actions via the `computer` tool:
-- click at coordinate [x, y] — click buttons, menus, icons
+- left_click at coordinate [x, y] — click buttons, menus, icons
 - double_click at coordinate [x, y] — open files/folders
 - right_click at coordinate [x, y] — open context menus
 - type text — type characters (click target field first!)
 - key text — press keyboard shortcuts (e.g. "ctrl+s", "Escape", "Return")
 - screenshot — take a fresh screenshot to see current state
-- scroll_up / scroll_down at coordinate [x, y] — scroll content
+- scroll at coordinate [x, y] with scroll_direction and scroll_amount — scroll content
 - mouse_move to coordinate [x, y] — hover over elements
+- left_click_drag from start_coordinate to coordinate — drag elements
 
 Additional custom tools:
 - execute_freecad_macro(code) — run Python code in FreeCAD for precision operations.

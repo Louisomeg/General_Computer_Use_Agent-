@@ -30,9 +30,23 @@ from core.settings import (
     TYPING_DELAY, CLICK_DELAY,
 )
 
-# Claude Computer Use tool version and beta flag
-COMPUTER_TOOL_VERSION = "computer_20250124"
-COMPUTER_USE_BETA = "computer-use-2025-01-24"
+# Claude Computer Use tool versions and beta flags
+# Newer models (Opus 4.5+) use the 20251124 version; older models use 20250124.
+_TOOL_VERSIONS = {
+    "new": {"type": "computer_20251124", "beta": "computer-use-2025-11-24"},
+    "old": {"type": "computer_20250124", "beta": "computer-use-2025-01-24"},
+}
+
+# Models that require the newer computer use tool version
+_NEW_CU_MODELS = {"claude-opus-4-6", "claude-sonnet-4-6", "claude-opus-4-5-20250918"}
+
+
+def _pick_computer_use_version(model_name: str) -> dict:
+    """Pick the correct computer use tool version for the model."""
+    for prefix in _NEW_CU_MODELS:
+        if model_name.startswith(prefix):
+            return _TOOL_VERSIONS["new"]
+    return _TOOL_VERSIONS["old"]
 
 
 class ClaudeAgenticLoop:
@@ -59,8 +73,19 @@ class ClaudeAgenticLoop:
         # Ignored params for API compat with AgenticLoop
         **kwargs,
     ):
-        self.client = anthropic.Anthropic()  # Uses ANTHROPIC_API_KEY env var
+        # Pick the right tool version + beta flag for the chosen model
+        cu_version = _pick_computer_use_version(model_name)
+        self._computer_tool_type = cu_version["type"]
+        self._computer_use_beta = cu_version["beta"]
+
+        # Set the beta header directly on the client (most reliable method)
+        self.client = anthropic.Anthropic(
+            default_headers={"anthropic-beta": self._computer_use_beta},
+        )
         self.model_name = model_name
+        print(f"[Claude Loop] Model: {model_name}")
+        print(f"[Claude Loop] Computer tool: {self._computer_tool_type}")
+        print(f"[Claude Loop] Beta flag: {self._computer_use_beta}")
         self.system_instruction = system_instruction or CLAUDE_SYSTEM_INSTRUCTION
         self.screenshot_fn = screenshot_fn or capture_desktop_screenshot
         self.max_turns = max_turns
@@ -125,7 +150,7 @@ class ClaudeAgenticLoop:
         return [
             # Claude's built-in computer use tool
             {
-                "type": COMPUTER_TOOL_VERSION,
+                "type": self._computer_tool_type,
                 "name": "computer",
                 "display_width_px": MODEL_SCREEN_WIDTH,
                 "display_height_px": MODEL_SCREEN_HEIGHT,
@@ -228,8 +253,12 @@ class ClaudeAgenticLoop:
     def _execute_computer_action(self, action_input: dict) -> dict:
         """Execute a Claude computer tool action via xdotool.
 
-        Handles: click, double_click, right_click, type, key,
-                 screenshot, scroll_up, scroll_down, mouse_move, drag.
+        Action names match the official Claude Computer Use API:
+        - left_click, right_click, middle_click, double_click, triple_click
+        - type, key, hold_key
+        - mouse_move, left_click_drag, left_mouse_down, left_mouse_up
+        - scroll (with scroll_direction + scroll_amount)
+        - screenshot, wait
         """
         action = action_input.get("action", "")
         coordinate = action_input.get("coordinate")
@@ -237,13 +266,19 @@ class ClaudeAgenticLoop:
 
         try:
             if action == "screenshot":
-                # Just return a screenshot, no action needed
                 return {"success": True}
 
-            elif action == "click":
+            elif action == "left_click":
                 if not coordinate:
-                    return {"error": "click requires coordinate"}
+                    return {"error": "left_click requires coordinate"}
                 sx, sy = self._map_coordinates(coordinate[0], coordinate[1])
+                # Handle modifier keys (shift, ctrl, alt, super)
+                if text and text in ("shift", "ctrl", "alt", "super"):
+                    mod_key = text if text != "super" else "Super_L"
+                    subprocess.run(["xdotool", "keydown", mod_key], check=True)
+                    result = system_click(sx, sy)
+                    subprocess.run(["xdotool", "keyup", mod_key], check=True)
+                    return result
                 return system_click(sx, sy)
 
             elif action == "double_click":
@@ -252,17 +287,39 @@ class ClaudeAgenticLoop:
                 sx, sy = self._map_coordinates(coordinate[0], coordinate[1])
                 return double_click(sx, sy)
 
+            elif action == "triple_click":
+                if not coordinate:
+                    return {"error": "triple_click requires coordinate"}
+                sx, sy = self._map_coordinates(coordinate[0], coordinate[1])
+                subprocess.run(
+                    ["xdotool", "mousemove", str(sx), str(sy)],
+                    check=True,
+                )
+                for _ in range(3):
+                    subprocess.run(["xdotool", "click", "1"], check=True)
+                return {"success": True}
+
             elif action == "right_click":
                 if not coordinate:
                     return {"error": "right_click requires coordinate"}
                 sx, sy = self._map_coordinates(coordinate[0], coordinate[1])
                 return right_click(sx, sy)
 
+            elif action == "middle_click":
+                if not coordinate:
+                    return {"error": "middle_click requires coordinate"}
+                sx, sy = self._map_coordinates(coordinate[0], coordinate[1])
+                subprocess.run(
+                    ["xdotool", "mousemove", str(sx), str(sy),
+                     "click", "2"],
+                    check=True,
+                )
+                return {"success": True}
+
             elif action == "mouse_move":
                 if not coordinate:
                     return {"error": "mouse_move requires coordinate"}
                 sx, sy = self._map_coordinates(coordinate[0], coordinate[1])
-                from core.freecad_functions import system_hover
                 return system_hover(sx, sy)
 
             elif action == "type":
@@ -277,28 +334,38 @@ class ClaudeAgenticLoop:
             elif action == "key":
                 if not text:
                     return {"error": "key requires text"}
-                # Claude sends key combos like "ctrl+s", "Return", etc.
-                # xdotool expects the same format
+                # Claude sends combos like "ctrl+s", "Return", etc.
                 subprocess.run(
                     ["xdotool", "key", "--clearmodifiers", text],
                     check=True,
                 )
                 return {"success": True}
 
-            elif action in ("scroll_up", "scroll_down"):
-                direction = "up" if action == "scroll_up" else "down"
+            elif action == "hold_key":
+                if not text:
+                    return {"error": "hold_key requires text"}
+                duration = action_input.get("duration", 1)
+                subprocess.run(["xdotool", "keydown", text], check=True)
+                time.sleep(duration)
+                subprocess.run(["xdotool", "keyup", text], check=True)
+                return {"success": True}
+
+            elif action == "scroll":
+                # Claude sends scroll_direction ("up"/"down"/"left"/"right")
+                # and scroll_amount (integer, default 3)
+                direction = action_input.get("scroll_direction", "down")
+                amount = action_input.get("scroll_amount", 3)
                 if coordinate:
                     sx, sy = self._map_coordinates(coordinate[0], coordinate[1])
                 else:
                     sx, sy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
-                clicks = action_input.get("amount", 3)
-                return system_scroll(sx, sy, direction, clicks)
+                return system_scroll(sx, sy, direction, amount)
 
-            elif action == "drag":
+            elif action == "left_click_drag":
                 start = action_input.get("start_coordinate", coordinate)
-                end = action_input.get("end_coordinate")
+                end = coordinate  # end position is in coordinate for drag
                 if not start or not end:
-                    return {"error": "drag requires start and end coordinates"}
+                    return {"error": "left_click_drag requires coordinates"}
                 sx1, sy1 = self._map_coordinates(start[0], start[1])
                 sx2, sy2 = self._map_coordinates(end[0], end[1])
                 subprocess.run(
@@ -311,6 +378,26 @@ class ClaudeAgenticLoop:
                     ["xdotool", "mousemove", "--sync", str(sx2), str(sy2)],
                     check=True,
                 )
+                subprocess.run(["xdotool", "mouseup", "1"], check=True)
+                return {"success": True}
+
+            elif action == "left_mouse_down":
+                if coordinate:
+                    sx, sy = self._map_coordinates(coordinate[0], coordinate[1])
+                    subprocess.run(
+                        ["xdotool", "mousemove", str(sx), str(sy)],
+                        check=True,
+                    )
+                subprocess.run(["xdotool", "mousedown", "1"], check=True)
+                return {"success": True}
+
+            elif action == "left_mouse_up":
+                if coordinate:
+                    sx, sy = self._map_coordinates(coordinate[0], coordinate[1])
+                    subprocess.run(
+                        ["xdotool", "mousemove", str(sx), str(sy)],
+                        check=True,
+                    )
                 subprocess.run(["xdotool", "mouseup", "1"], check=True)
                 return {"success": True}
 
@@ -368,13 +455,15 @@ class ClaudeAgenticLoop:
 
             # ── Get Claude response ──────────────────────────────────────
             try:
+                # Beta header is set via default_headers on the client.
+                # Also pass betas= for redundancy (SDK may merge headers).
                 response = self.client.beta.messages.create(
                     model=self.model_name,
                     max_tokens=self.max_output_tokens,
                     system=self.system_instruction,
                     tools=tools,
                     messages=messages,
-                    betas=[COMPUTER_USE_BETA],
+                    betas=[self._computer_use_beta],
                 )
             except anthropic.APIError as e:
                 termcolor.cprint(f"Claude API error: {e}", color="red")
