@@ -1,0 +1,274 @@
+name: part_design_operations
+type: knowledge
+category: part_design
+description: >
+  Part Design operations for creating and modifying 3D features in FreeCAD 1.0.
+  These operations transform 2D sketches into 3D solids and add finishing features
+  like fillets and chamfers. Also covers Body/Sketch creation and sketch closing.
+
+operations:
+  # -- Body & Sketch Management ------------------------------------------------
+
+  - name: create_body
+    description: Create a new Part Design Body (container for all features)
+    when_to_use: "Starting a new part from scratch — every part needs a Body"
+    prerequisite: "Part Design workbench must be active ('Part Design' visible in the menu bar)"
+    actions:
+      - what: "Create a new Body"
+        how: "Part Design menu → Create body"
+        verify: "'Body' and 'Origin' appear in the model tree (left panel)"
+        skip_if: "Model tree already shows 'Body' — one already exists"
+    tips:
+      - "Each document should have exactly one Body for single-part designs"
+      - "The Body is the container for ALL Part Design features (sketches, pads, pockets, etc.)"
+
+  - name: create_sketch
+    description: Start a new 2D sketch on a plane or on a face of an existing solid
+    when_to_use: "Before drawing any 2D geometry — every 3D feature starts with a sketch"
+    actions:
+      - what: "Select where to sketch"
+        how: |
+          For a NEW part (no solid yet): click 'Body' in the model tree (left panel).
+          For sketching ON an existing face: click the FACE directly in the 3D viewport.
+          The face should highlight when you hover over it.
+        verify: "The item highlights when clicked (blue text in tree, or colored face in viewport)"
+      - what: "Create the sketch"
+        how: "Part Design menu → Create sketch"
+        gotcha: "The menu item is 'Create sketch' in FreeCAD 1.0, NOT 'New Sketch'"
+      - what: "Select the sketch plane (for new parts only)"
+        how: "In the plane selection dialog, click 'XY_Plane' (for horizontal sketches), 'XZ_Plane' (for vertical front-facing), or 'YZ_Plane' (for vertical side-facing). Then click OK."
+        skip_if: "You selected a face in the viewport — FreeCAD automatically uses that face as the sketch plane"
+        verify: "Sketcher grid visible with red X-axis and green Y-axis lines. 'Sketch' menu appears in the menu bar."
+    tips:
+      - "XY_Plane = horizontal (top view). XZ_Plane = vertical front. YZ_Plane = vertical side."
+      - "When sketching on an existing face, the view may rotate to show the face head-on"
+      - "The 'Sketch' menu only appears in the menu bar while inside a sketch"
+
+  - name: close_sketch
+    description: Exit the sketcher and return to Part Design mode
+    when_to_use: "After finishing all geometry and constraints in a sketch — before Pad/Pocket"
+    prerequisite: "Must be inside an active sketch ('Sketch' menu visible in the menu bar)"
+    actions:
+      - what: "Close the sketch"
+        how: "Sketch menu → Close sketch"
+        alternative: "Click the 'Close' button in the Tasks panel (left side)"
+        verify: "Menu bar shows 'Part Design' menus again (the 'Sketch' menu disappears)"
+        gotcha: "Do NOT press Escape to close the sketch — Escape only cancels the active sketcher tool, it does NOT exit the sketcher"
+    tips:
+      - "If the sketch is under-constrained (white lines, degrees of freedom > 0), FreeCAD will still let you close it, but the part may behave unpredictably when editing later"
+      - "Always aim for a fully constrained sketch (green lines, 0 degrees of freedom) before closing"
+
+  # -- Additive Operations (add material) -------------------------------------
+
+  - name: pad
+    description: Extrude a 2D sketch profile into a 3D solid (additive extrusion)
+    when_to_use: "Creating any solid from a sketch — base plates, walls, bosses, standoffs, any shape that adds material"
+    prerequisite: "A closed sketch must exist. It should be the latest item in the model tree, or selected."
+    actions:
+      - what: "Activate Pad"
+        how: "Part Design menu → Pad"
+        gotcha: "If 'Pad' is grayed out, the sketch may still be open — close it first via Sketch menu → Close sketch"
+      - what: "Set the extrusion length"
+        how: "In the Tasks panel (left side), find the Length field. Click it, clear any existing value, and type the value WITH units."
+        type_value: "{{depth}} mm"
+        gotcha: "Always include ' mm' after the number — FreeCAD may default to micrometers (um) if you omit units"
+      - what: "Confirm the pad"
+        how: "Click the OK button in the Tasks panel"
+      - what: "Verify the result"
+        how: "View menu → Standard views → Fit All"
+        verify: "A 3D solid is visible in the viewport matching the sketch profile"
+    tips:
+      - "For symmetric extrusion (equal on both sides), check 'Symmetric to plane' in the pad dialog"
+      - "Type 'Dimension' should already be selected — if not, set it in the Type dropdown"
+      - "If the solid looks wrong, undo (Ctrl+Z) and check the sketch for open edges or overlapping lines"
+
+  - name: revolution
+    description: Revolve a sketch profile around an axis to create a solid of revolution
+    when_to_use: "Creating cylindrical or rotationally symmetric parts — vases, bottles, shafts, wheels"
+    prerequisite: "A closed sketch with a straight edge along the revolution axis, or use a construction line as axis"
+    actions:
+      - what: "Activate Revolution"
+        how: "Part Design menu → Revolution"
+      - what: "Set the revolution axis"
+        how: "In the Tasks panel, select the axis. Usually 'Vertical sketch axis' for profiles drawn next to the Y-axis, or 'Horizontal sketch axis' for profiles next to the X-axis."
+      - what: "Set the angle"
+        how: "Type the angle value — use '360' for a full revolution, or a smaller angle for partial revolution"
+        type_value: "{{angle}} deg"
+      - what: "Confirm"
+        how: "Click OK"
+        verify: "A 3D solid of revolution is visible"
+    tips:
+      - "The sketch profile must be on ONE SIDE of the axis — it cannot cross the axis line"
+      - "Use a construction line in the sketch as the revolution axis if the default axes don't work"
+
+  # -- Subtractive Operations (remove material) -------------------------------
+
+  - name: pocket
+    description: Cut into an existing solid by extruding a sketch inward (subtractive extrusion)
+    when_to_use: "Creating holes, slots, recesses, channels — any material removal from a solid"
+    prerequisite: "A closed sketch drawn on a face of an existing solid"
+    actions:
+      - what: "Activate Pocket"
+        how: "Part Design menu → Pocket"
+      - what: "Set the cut depth"
+        how: "In the Tasks panel, ensure Type is set to 'Dimension'. Type the depth value with units."
+        type_value: "{{depth}} mm"
+        alternative: "Set Type to 'Through All' if the cut should go completely through the solid"
+      - what: "Confirm"
+        how: "Click OK"
+        verify: "Material is removed from the solid — you can see the cutout in the viewport"
+    tips:
+      - "'Through All' is safer than specifying a depth when you want a complete through-hole"
+      - "If the pocket doesn't cut, verify the sketch is actually ON a face of the solid (not floating in space)"
+      - "For blind holes (not through), use 'Dimension' type and specify the exact depth"
+
+  - name: groove
+    description: Remove material by revolving a sketch profile around an axis (subtractive revolution)
+    when_to_use: "Creating annular grooves, turned recesses, lathe-style material removal"
+    prerequisite: "A closed sketch on a face, with the profile on one side of the axis"
+    actions:
+      - what: "Activate Groove"
+        how: "Part Design menu → Groove"
+      - what: "Set the revolution axis and angle"
+        how: "Same as Revolution — select axis and type angle"
+        type_value: "{{angle}} deg"
+      - what: "Confirm"
+        how: "Click OK"
+        verify: "Material is removed in a rotational pattern"
+
+  # -- Edge Finishing Operations ------------------------------------------------
+
+  - name: fillet
+    description: Round off sharp edges with a smooth curved radius
+    when_to_use: "Smoothing edges for aesthetics, stress relief, assembly clearance, or safety"
+    prerequisite: "An EDGE (not a face) must be selected on the 3D solid"
+    actions:
+      - what: "Select the edge to fillet"
+        how: "Click directly on the EDGE in the 3D viewport — the edge is the LINE where two faces meet. You may need to rotate the view first to see the edge clearly."
+        verify: "The edge highlights (changes color to green or white)"
+        gotcha: "Click EDGES not FACES — faces will not work for fillet. If you accidentally select a face, click in empty space to deselect, then try again."
+        fallback: "If you cannot see the edge clearly, use View menu → Standard views → Isometric to get a better angle, then click the edge."
+      - what: "Activate Fillet"
+        how: "Part Design menu → Fillet"
+      - what: "Set the fillet radius"
+        how: "In the Tasks panel, type the radius value with units"
+        type_value: "{{radius}} mm"
+        gotcha: "The fillet radius must be SMALLER than the shortest edge it touches — too large a radius will fail"
+      - what: "Confirm"
+        how: "Click OK"
+        verify: "The sharp edge is replaced by a smooth rounded surface"
+    tips:
+      - "Hold CTRL and click to select multiple edges for filleting at once"
+      - "If fillet fails with a geometry error, try a slightly smaller radius"
+      - "Inner edges (concave) and outer edges (convex) can both be filleted"
+      - "To select an edge at a junction of 3+ faces, zoom in very close"
+
+  - name: chamfer
+    description: Cut a flat angled bevel on sharp edges
+    when_to_use: "Creating beveled edges for deburring, lead-in for assembly, or visual style"
+    prerequisite: "An EDGE must be selected on the 3D solid"
+    actions:
+      - what: "Select the edge"
+        how: "Click directly on the EDGE in the 3D viewport"
+        verify: "Edge highlights"
+        gotcha: "Same as fillet — click EDGES not FACES"
+      - what: "Activate Chamfer"
+        how: "Part Design menu → Chamfer"
+      - what: "Set the chamfer size"
+        how: "Choose 'Equal distance' for symmetric chamfer, or 'Two distances' for asymmetric. Type the value with units."
+        type_value: "{{size}} mm"
+      - what: "Confirm"
+        how: "Click OK"
+        verify: "The sharp edge is replaced by a flat angled surface"
+    tips:
+      - "Equal distance chamfer creates a 45-degree bevel"
+      - "Two distances creates an asymmetric bevel — useful for specific lead-in angles"
+
+  # -- Pattern & Transform Operations ------------------------------------------
+
+  - name: mirror
+    description: Mirror existing features across a plane to create symmetric copies
+    when_to_use: "When a part is symmetric — mirror one half instead of modeling both sides"
+    prerequisite: "At least one feature (pad, pocket, etc.) must exist to mirror"
+    actions:
+      - what: "Select the feature(s) to mirror"
+        how: "Click the feature in the model tree (e.g., 'Pad', 'Pocket')"
+      - what: "Activate Mirror"
+        how: "Part Design menu → Mirrored"
+      - what: "Set the mirror plane"
+        how: "In the Tasks panel, select the mirror plane from the dropdown (XY, XZ, or YZ)"
+      - what: "Confirm"
+        how: "Click OK"
+        verify: "A mirrored copy of the feature appears on the opposite side"
+
+  - name: linear_pattern
+    description: Repeat a feature in a straight line at regular intervals
+    when_to_use: "Creating rows of holes, mounting slots, repeated features along a line"
+    prerequisite: "At least one feature must exist to pattern"
+    actions:
+      - what: "Select the feature to repeat"
+        how: "Click the feature in the model tree"
+      - what: "Activate Linear Pattern"
+        how: "Part Design menu → Linear Pattern"
+      - what: "Set direction, count, and spacing"
+        how: "In the Tasks panel: set Direction (along X, Y, or edge), Occurrences (total count including original), and Length (total span distance)"
+      - what: "Confirm"
+        how: "Click OK"
+        verify: "Multiple copies of the feature appear in a straight line"
+
+  - name: polar_pattern
+    description: Repeat a feature around an axis at regular angular intervals
+    when_to_use: "Creating bolt hole circles, gear teeth, radial features"
+    prerequisite: "At least one feature must exist to pattern"
+    actions:
+      - what: "Select the feature to repeat"
+        how: "Click the feature in the model tree"
+      - what: "Activate Polar Pattern"
+        how: "Part Design menu → Polar Pattern"
+      - what: "Set axis, count, and angle"
+        how: "In the Tasks panel: set Axis (usually Normal sketch axis for circular patterns), Occurrences (total count), and Angle (total angular span — use 360 for full circle)"
+      - what: "Confirm"
+        how: "Click OK"
+        verify: "Multiple copies appear arranged in a circular pattern"
+
+  # -- Shell / Thickness Operation ---------------------------------------------
+
+  - name: thickness
+    description: Hollow out a solid by removing a face and adding wall thickness
+    when_to_use: "Creating enclosures, boxes, containers — any hollow shell with uniform wall thickness"
+    prerequisite: "A solid must exist, and you select the FACE to remove (the opening)"
+    actions:
+      - what: "Select the face to remove"
+        how: "Click the FACE in the 3D viewport that will become the opening of the shell"
+        verify: "The face highlights"
+      - what: "Activate Thickness"
+        how: "Part Design menu → Thickness"
+      - what: "Set the wall thickness"
+        how: "In the Tasks panel, type the thickness value with units"
+        type_value: "{{thickness}} mm"
+      - what: "Confirm"
+        how: "Click OK"
+        verify: "The solid becomes hollow with uniform walls and the selected face removed"
+    tips:
+      - "Select multiple faces to create openings on multiple sides"
+      - "If thickness fails, the geometry may be too complex — try simpler shapes first"
+
+tips:
+  - "Part Design operations are SEQUENTIAL — each feature builds on the previous one"
+  - "The model tree (left panel) shows the history of all operations in order"
+  - "If an operation fails, Undo (Ctrl+Z) and check the prerequisite (e.g., is a sketch closed? is an edge selected?)"
+  - "Pad = add material. Pocket = remove material. They are mirror operations."
+  - "Always use 'View → Standard views → Fit All' after creating a feature to see the full result"
+  - "To select a face for a new sketch, rotate the view first so the face is visible"
+
+troubleshooting:
+  - problem: "'Pad' or 'Pocket' is grayed out in the Part Design menu"
+    solution: "The sketch is probably still open. Close it first: Sketch menu → Close sketch. Then try Pad/Pocket again."
+  - problem: "Fillet fails with a geometry error"
+    solution: "The radius is too large for the edge. Try a smaller value (e.g., half the current radius). Also check that you selected an EDGE, not a FACE."
+  - problem: "Pocket doesn't seem to cut anything"
+    solution: "The sketch may not be on a face of the solid. Make sure you clicked a FACE of the existing solid before creating the sketch for the pocket."
+  - problem: "The 3D solid looks wrong or has unexpected shape"
+    solution: "Undo the last operation (Ctrl+Z multiple times if needed). Check the sketch for: overlapping lines, open edges (gaps), or unwanted auto-constraints."
+  - problem: "Cannot select a face for sketching — clicking selects the wrong thing"
+    solution: "Rotate the view so the face you want is facing you directly. Use View menu → Standard views → Top/Front/Right to get a clean angle."

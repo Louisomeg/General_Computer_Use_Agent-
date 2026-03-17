@@ -1,0 +1,741 @@
+"""
+Agentic Loop — shared foundation for all agents.
+
+Screenshot delivery follows Google's reference implementation:
+  - Initial screenshot bundled with the prompt
+  - Subsequent screenshots bundled with function responses
+  (NOT as separate user messages)
+
+Backward compatible with Louis's desktop usage:
+    loop = AgenticLoop(client)
+    loop.agentic_loop("open freecad", DesktopExecutor())
+"""
+import time
+from typing import Optional, Callable, List, Literal, Any
+
+import termcolor
+from google.genai import Client, types
+from google.genai.types import Candidate, GenerateContentConfig
+
+from core.custom_tools import get_custom_declarations
+from core.executor import Executor
+from core.screenshot import capture_desktop_screenshot
+from core.settings import DEFAULT_MODEL, SYSTEM_INSTRUCTION
+
+# Keep only the N most recent screenshots in conversation history.
+# Older screenshots are stripped to save context window space.
+MAX_SCREENSHOTS = 2
+
+
+REPORT_FINDINGS_DECLARATION = types.FunctionDeclaration(
+    name="report_findings",
+    description=(
+        "Call this when you have completed your research and want to "
+        "submit your findings. Include all data points with sources."
+    ),
+    parameters_json_schema={
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "Summary paragraph of all findings",
+            },
+            "data_points": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "fact": {"type": "string"},
+                        "value": {"type": "string"},
+                        "unit": {"type": "string"},
+                        "source": {"type": "string"},
+                    },
+                },
+                "description": "Array of {fact, value, unit, source}",
+            },
+            "sources": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "All URLs visited during research",
+            },
+            "confidence": {
+                "type": "string",
+                "description": "high, medium, or low",
+            },
+            "gaps": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Things you could NOT find or verify",
+            },
+        },
+        "required": ["summary", "data_points", "sources", "confidence"],
+    },
+)
+
+
+class AgenticLoop:
+    def __init__(
+        self,
+        client: Client,
+        model_name: str = DEFAULT_MODEL,
+        system_instruction: Optional[str] = None,
+        screenshot_fn: Optional[Callable[[], bytes]] = None,
+        extra_declarations: Optional[List[types.FunctionDeclaration]] = None,
+        max_turns: int = 0,
+        use_browser_environment: bool = False,
+        custom_declarations: Optional[List[types.FunctionDeclaration]] = None,
+        finish_function_name: str = "task_complete",
+        max_output_tokens: int = 2048,
+        stage_budgets: Optional[List[dict]] = None,
+        verify_before_complete: bool = False,
+    ):
+        self.client = client
+        self.model_name = model_name
+        self.system_instruction = system_instruction or SYSTEM_INSTRUCTION
+        self.screenshot_fn = screenshot_fn or capture_desktop_screenshot
+        self.extra_declarations = extra_declarations or []
+        self.max_turns = max_turns
+        self.use_browser_environment = use_browser_environment
+        # If custom_declarations is provided, it replaces get_custom_declarations().
+        # This lets agents pass filtered shortcut sets to reduce per-turn overhead.
+        self.custom_declarations = custom_declarations
+        self.finish_function_name = finish_function_name
+        self.max_output_tokens = max_output_tokens
+        self._turn_count = 0
+        self._empty_response_retries = 0
+        self._empty_reset_done = False  # one-shot history reset on persistent empty responses
+        self._cached_config = self._build_config()
+
+        # Stage budgeting: tracks how many turns each stage is allowed.
+        # Each stage dict: {"name": str, "budget": int, "description": str}
+        # Stages are consumed in order. When a stage exceeds its budget,
+        # a warning is injected telling the agent to move on.
+        self._verify_before_complete = verify_before_complete
+        self._stage_budgets = stage_budgets or []
+        self._stage_turns = 0  # turns spent in current stage
+        self._current_stage_idx = 0  # index into _stage_budgets
+        self._stage_warning_sent = False  # only warn once per stage
+
+    @property
+    def turn_count(self):
+        return self._turn_count
+
+    def _check_stage_budget(self) -> Optional[str]:
+        """Check if the current stage has exceeded its turn budget.
+
+        Returns a warning message if the stage is over budget, or None.
+        Automatically advances to the next stage after warning.
+        """
+        if not self._stage_budgets:
+            return None
+        if self._current_stage_idx >= len(self._stage_budgets):
+            return None
+
+        self._stage_turns += 1
+        stage = self._stage_budgets[self._current_stage_idx]
+        budget = stage["budget"]
+        name = stage["name"]
+
+        if self._stage_turns > budget and not self._stage_warning_sent:
+            self._stage_warning_sent = True
+            # Build info about remaining stages
+            remaining_stages = self._stage_budgets[self._current_stage_idx + 1:]
+            next_desc = ""
+            if remaining_stages:
+                next_stage = remaining_stages[0]
+                next_desc = f" Move on to: {next_stage['description']}"
+
+            warning = (
+                f"STAGE BUDGET EXCEEDED: You have spent {self._stage_turns} turns "
+                f"on '{name}' (budget was {budget}).{next_desc} "
+                f"Close the current operation NOW and proceed to the next step. "
+                f"If stuck, use execute_freecad_macro() for precision, or "
+                f"call task_complete() if the design is good enough."
+            )
+            print(f"  [!] Stage '{name}' over budget ({self._stage_turns}/{budget})")
+            return warning
+
+        return None
+
+    def advance_stage(self):
+        """Manually advance to the next stage (called when a stage milestone is detected)."""
+        if self._current_stage_idx < len(self._stage_budgets):
+            stage = self._stage_budgets[self._current_stage_idx]
+            print(f"  [Stage] Completed '{stage['name']}' in {self._stage_turns} turns")
+            self._current_stage_idx += 1
+            self._stage_turns = 0
+            self._stage_warning_sent = False
+
+    # ── Safety acknowledgement (from Google reference code) ──────────────
+
+    def _handle_safety_decision(
+        self, safety: dict
+    ) -> Literal["CONTINUE", "TERMINATE"]:
+        """Handle Gemini's safety_decision on a function call.
+
+        For automated agents we auto-confirm safe actions.
+        Returns CONTINUE to proceed or TERMINATE to stop.
+        """
+        decision = safety.get("decision", "")
+        explanation = safety.get("explanation", "")
+        if decision == "require_confirmation":
+            termcolor.cprint(
+                f"Safety confirmation auto-accepted: {explanation}",
+                color="yellow",
+            )
+            return "CONTINUE"
+        return "CONTINUE"
+
+    # ── Screenshot management ────────────────────────────────────────────
+
+    def _clean_old_screenshots(self, history: list):
+        """Remove old screenshots from history, keeping only the most recent.
+
+        Walks backward through history and strips inline_data (images) from
+        older turns to stay within context limits.  Replaces fully-stripped
+        Content with a placeholder to maintain role alternation.
+        """
+        screenshot_count = 0
+        for content in reversed(history):
+            if content.role == "user" and content.parts:
+                parts_to_remove = []
+                for part in content.parts:
+                    if part.inline_data is not None:
+                        screenshot_count += 1
+                        if screenshot_count > MAX_SCREENSHOTS:
+                            parts_to_remove.append(part)
+                for part in parts_to_remove:
+                    content.parts.remove(part)
+                # If all parts were removed, add placeholder to keep alternation
+                if not content.parts:
+                    content.parts.append(
+                        types.Part.from_text(text="[continued]")
+                    )
+
+    def _reset_history(self, history: list) -> int:
+        """Reset history to initial prompt + fresh screenshot for 400 recovery.
+
+        The old _trim_history naively sliced the middle out of history, which
+        broke function-call/response pairing and role alternation — causing
+        further 400 errors.  This method instead does a clean reset: keep the
+        original prompt text, capture a fresh screenshot, and discard all
+        intermediate conversation.
+
+        Returns the original length for logging.
+        """
+        original_len = len(history)
+        if original_len <= 1:
+            return original_len
+
+        # Extract original text parts from first entry (the initial prompt)
+        text_parts = [p for p in history[0].parts if p.text]
+        if not text_parts:
+            text_parts = [types.Part.from_text(text="Continue with the task.")]
+
+        # Build fresh initial entry: original prompt + new screenshot
+        screenshot_bytes = self.screenshot_fn()
+        new_parts = text_parts + [
+            types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes)
+        ]
+
+        history[:] = [types.Content(role='user', parts=new_parts)]
+        return original_len
+
+    # ── Main loop ────────────────────────────────────────────────────────
+
+    def agentic_loop(
+        self, prompt: str, executor: Executor, images: list[bytes] = None,
+    ) -> str:
+        """Run the agentic loop: screenshot → model → execute → repeat.
+
+        Screenshot delivery follows Google's reference implementation:
+        1. Initial screenshot is bundled WITH the prompt
+        2. Subsequent screenshots are bundled WITH function responses
+        This matches the pattern the model was trained on.
+
+        Args:
+            prompt: Initial text prompt for the model.
+            executor: Desktop executor for running actions.
+            images: Optional demonstration screenshots to inject alongside
+                    the initial prompt. Placed between prompt text and live
+                    screenshot. Will be cleaned up by _clean_old_screenshots()
+                    after a few turns.
+
+        Returns:
+            "completed" — task_complete() was called by the model
+            "max_turns" — ran out of turns
+            "api_error" — permanent API error (400, 429, etc.)
+            "empty_responses" — model returned no candidates 3x
+            "no_actions" — model refused to act after 3 nudges
+        """
+        self._turn_count = 0  # Reset per call so each invocation gets a fresh budget
+        self._empty_response_retries = 0  # Reset retry counter for fresh run
+        self._empty_reset_done = False  # Allow one history reset on persistent empty responses
+        self._text_only_retries = 0  # Counts turns where model talks but takes no action
+        self._recent_actions = []  # Track recent actions for repetition detection
+        self._verification_requested = False  # Gate: force screenshot check before task_complete
+        _400_recovered = False  # Allow one clean history reset on 400 error
+
+        # ── Initial turn: prompt + optional demo images + screenshot ───
+        screenshot_bytes = self.screenshot_fn()
+        parts = [types.Part.from_text(text=prompt)]
+        if images:
+            for img_bytes in images:
+                parts.append(types.Part.from_bytes(mime_type='image/png', data=img_bytes))
+        parts.append(types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes))
+        history = [types.Content(role='user', parts=parts)]
+
+        exit_status = "completed"
+
+        while True:
+            self._turn_count += 1
+            if self.max_turns > 0 and self._turn_count > self.max_turns:
+                termcolor.cprint(f"Max turns ({self.max_turns}) reached.", color="yellow")
+                exit_status = "max_turns"
+                break
+
+            # ── Get model response ───────────────────────────────────────
+            try:
+                response = self.get_model_response(history)
+            except Exception as e:
+                error_str = str(e)
+                # 400 INVALID_ARGUMENT — history likely malformed (broken
+                # alternation, orphaned function responses, etc.).
+                # Reset to initial prompt + fresh screenshot and retry once.
+                if ("400" in error_str and "INVALID_ARGUMENT" in error_str
+                        and not _400_recovered):
+                    _400_recovered = True
+                    original_len = self._reset_history(history)
+                    termcolor.cprint(
+                        f"400 error — reset history from {original_len} to "
+                        f"{len(history)} entry, retrying...",
+                        color="yellow",
+                    )
+                    continue
+                print(e)
+                exit_status = "api_error"
+                break
+
+            # Handle empty responses (no candidates) — retry with a fresh
+            # screenshot instead of crashing.  This can happen transiently
+            # due to content-safety filters or API hiccups.
+            if not response.candidates:
+                self._empty_response_retries += 1
+                if self._empty_response_retries >= 5:
+                    termcolor.cprint(
+                        "Empty response 5 times in a row — stopping.",
+                        color="red",
+                    )
+                    exit_status = "empty_responses"
+                    break
+                # After 3 consecutive empties, try history reset for fresh context.
+                # Something in the conversation may be triggering safety filters.
+                if (self._empty_response_retries == 3
+                        and not self._empty_reset_done
+                        and len(history) > 1):
+                    self._empty_reset_done = True
+                    original_len = self._reset_history(history)
+                    termcolor.cprint(
+                        f"3 empty responses — reset history ({original_len} → "
+                        f"{len(history)} entry) for fresh context...",
+                        color="yellow",
+                    )
+                    self._turn_count -= 1
+                    continue
+                termcolor.cprint(
+                    f"Response has no candidates (attempt "
+                    f"{self._empty_response_retries}/5). "
+                    f"Retrying with fresh screenshot...",
+                    color="yellow",
+                )
+                time.sleep(1)  # Brief pause before retry
+                screenshot_bytes = self.screenshot_fn()
+                # Update the screenshot in the last user Content in-place.
+                # Do NOT fabricate model Content — Gemini 3 validates thought
+                # signatures on model entries, and fabricated ones cause 400s.
+                if history and history[-1].role == 'user':
+                    history[-1].parts = [
+                        p for p in history[-1].parts if p.inline_data is None
+                    ]
+                    history[-1].parts.append(
+                        types.Part.from_bytes(
+                            mime_type='image/png', data=screenshot_bytes
+                        )
+                    )
+                self._turn_count -= 1  # Don't count retries against the budget
+                continue
+
+            # Reset empty-response counter on any successful response
+            self._empty_response_retries = 0
+
+            candidate = response.candidates[0]
+
+            # Candidate exists but has no content (e.g. safety-filtered).
+            # Treat like empty response — update screenshot and retry.
+            if not candidate.content:
+                self._empty_response_retries += 1
+                if self._empty_response_retries >= 5:
+                    termcolor.cprint(
+                        "Empty content 5 times in a row — stopping.",
+                        color="red",
+                    )
+                    exit_status = "empty_responses"
+                    break
+                if (self._empty_response_retries == 3
+                        and not self._empty_reset_done
+                        and len(history) > 1):
+                    self._empty_reset_done = True
+                    original_len = self._reset_history(history)
+                    termcolor.cprint(
+                        f"3 empty contents — reset history ({original_len} → "
+                        f"{len(history)} entry) for fresh context...",
+                        color="yellow",
+                    )
+                    self._turn_count -= 1
+                    continue
+                time.sleep(1)
+                screenshot_bytes = self.screenshot_fn()
+                if history and history[-1].role == 'user':
+                    history[-1].parts = [
+                        p for p in history[-1].parts if p.inline_data is None
+                    ]
+                    history[-1].parts.append(
+                        types.Part.from_bytes(
+                            mime_type='image/png', data=screenshot_bytes
+                        )
+                    )
+                self._turn_count -= 1
+                continue
+
+            history.append(candidate.content)
+
+            reasoning = self.get_text(candidate)
+            function_calls = self.extract_function_calls(candidate)
+
+            # Print turn info
+            turn_info = f"[Turn {self._turn_count}"
+            if self.max_turns > 0:
+                turn_info += f"/{self.max_turns}"
+            turn_info += f"] {len(function_calls)} action(s)"
+            if reasoning:
+                short = reasoning[:150] + "..." if len(reasoning) > 150 else reasoning
+                turn_info += f" | {short}"
+            print(turn_info)
+
+            # Handle malformed function calls — retry without breaking.
+            # Remove the malformed model content first — it may contain
+            # partial function call parts without matching responses, which
+            # would cause a 400 on the next turn.
+            if (not function_calls and not reasoning
+                    and candidate.finish_reason == types.FinishReason.MALFORMED_FUNCTION_CALL):
+                if history and history[-1].role == 'model':
+                    history.pop()
+                # Update screenshot on the (now-last) user Content
+                screenshot_bytes = self.screenshot_fn()
+                if history and history[-1].role == 'user':
+                    history[-1].parts = [
+                        p for p in history[-1].parts if p.inline_data is None
+                    ]
+                    history[-1].parts.append(
+                        types.Part.from_bytes(
+                            mime_type='image/png', data=screenshot_bytes
+                        )
+                    )
+                self._turn_count -= 1  # Don't count malformed retries against the budget
+                continue
+
+            # No function calls → model is deliberating instead of acting.
+            # Nudge it to take action instead of immediately exiting.
+            if not function_calls:
+                self._text_only_retries += 1
+                if self._text_only_retries >= 3:
+                    print(f"Agent Loop Complete (no actions after 3 nudges): {reasoning}")
+                    exit_status = "no_actions"
+                    break
+                termcolor.cprint(
+                    f"Text-only response ({self._text_only_retries}/3). "
+                    f"Nudging model to act...",
+                    color="yellow",
+                )
+                screenshot_bytes = self.screenshot_fn()
+                history.append(types.Content(role='user', parts=[
+                    types.Part.from_text(
+                        text="STOP deliberating. You MUST call a function NOW. "
+                             "Pick the single best action and execute it immediately. "
+                             "Do not explain your reasoning — just act."
+                    ),
+                    types.Part.from_bytes(
+                        mime_type='image/png', data=screenshot_bytes
+                    ),
+                ]))
+                self._turn_count -= 1  # Don't count nudges against the budget
+                continue
+
+            # Model took action — reset text-only counter
+            self._text_only_retries = 0
+
+            # ── Execute function calls ───────────────────────────────────
+            should_stop = False
+            response_parts = []
+
+            for fc in function_calls:
+                extra_fields = {}
+
+                # Check for safety_decision in function call args.
+                # The API may use snake_case or camelCase depending on
+                # the transport layer, so check both.
+                safety = None
+                if fc.args:
+                    safety = (fc.args.get("safety_decision")
+                              or fc.args.get("safetyDecision"))
+                if safety:
+                    decision = self._handle_safety_decision(
+                        safety if isinstance(safety, dict) else {"decision": str(safety)}
+                    )
+                    if decision == "TERMINATE":
+                        print("Safety termination requested.")
+                        should_stop = True
+                        break
+                    # CRITICAL: acknowledge the safety decision
+                    extra_fields["safety_acknowledgement"] = "true"
+
+                # ── Verification gate for task_complete ────────────────
+                # When enabled, the first time the agent calls the finish
+                # function, reject it and ask it to verify the result
+                # visually. Only accept on the second call.
+                if (self._verify_before_complete
+                        and fc.name == self.finish_function_name
+                        and not self._verification_requested):
+                    self._verification_requested = True
+                    print("  [!] task_complete intercepted — requesting verification")
+                    verify_response = {
+                        "status": "verification_required",
+                        "message": (
+                            "BEFORE completing: Look at the screenshot carefully. "
+                            "Does the 3D model match the task requirements? "
+                            "Check: (1) correct shape/profile, (2) all holes present, "
+                            "(3) dimensions look reasonable, (4) no error dialogs. "
+                            "If everything looks correct, call task_complete() again. "
+                            "If something is wrong, fix it first."
+                        ),
+                    }
+                    # Preserve safety acknowledgement to avoid 400 errors
+                    verify_response.update(extra_fields)
+                    response_parts.append(
+                        types.Part.from_function_response(
+                            name=fc.name,
+                            response=verify_response,
+                        )
+                    )
+                    continue  # Skip execution, force verification
+
+                # Execute the function call
+                fc_results = executor.execute([fc])
+                for fc_name, fc_response in fc_results:
+                    fc_response.setdefault("url", "desktop://linux")
+                    # Merge safety acknowledgement into the response
+                    fc_response.update(extra_fields)
+                    response_parts.append(
+                        types.Part.from_function_response(
+                            name=fc_name,
+                            response=fc_response,
+                        )
+                    )
+                    if fc_response.get("status") in ("research_complete", "task_complete"):
+                        should_stop = True
+
+            # ── Build the response content: func responses + screenshot ──
+            # This matches Google's reference implementation pattern:
+            # function responses and the resulting screenshot go in ONE message.
+            if response_parts:
+                # Wait for the UI to settle before capturing the screenshot.
+                # FreeCAD is a heavy Qt application and needs time after actions
+                # (creating bodies, entering sketcher, opening dialogs) before
+                # the screen accurately reflects the new state.
+                time.sleep(0.5)
+                # Capture screenshot AFTER executing all actions for this turn
+                screenshot_bytes = self.screenshot_fn()
+                response_parts.append(
+                    types.Part.from_bytes(mime_type='image/png', data=screenshot_bytes)
+                )
+
+                # Inject turns-remaining warning if approaching budget
+                if self.max_turns > 0:
+                    remaining = self.max_turns - self._turn_count
+                    if 0 < remaining <= 5:
+                        warning = (
+                            f"WARNING: You have {remaining} turns left. "
+                            f"Wrap up your current work and finish the task NOW. "
+                            f"Call {self.finish_function_name}() with your results. "
+                            f"Do not start any new operations."
+                        )
+                        response_parts.append(types.Part.from_text(text=warning))
+                        print(f"  [!] Turn warning injected: {remaining} turns left")
+                    elif remaining == 0:
+                        warning = (
+                            f"FINAL TURN. You MUST call {self.finish_function_name}() right now. "
+                            "Summarize what was accomplished and what failed."
+                        )
+                        response_parts.append(types.Part.from_text(text=warning))
+                        print(f"  [!] FINAL TURN warning injected")
+
+                # Stage budget warning (injected alongside turn warnings)
+                stage_warning = self._check_stage_budget()
+                if stage_warning:
+                    response_parts.append(types.Part.from_text(text=stage_warning))
+
+                history.append(types.Content(role='user', parts=response_parts))
+
+            # Clean old screenshots to save context window
+            self._clean_old_screenshots(history)
+
+            if should_stop:
+                termcolor.cprint("Task complete.", color="green")
+                exit_status = "completed"
+                break
+
+            # ── Repetitive action detection ───────────────────────────
+            # Track ALL actions and detect stuck patterns:
+            #   - Same single action repeated 4x (e.g. clicking same spot)
+            #   - Same 2-action cycle repeated 3x (e.g. click + type loop)
+            for fc in function_calls:
+                if fc.args:
+                    if fc.name in ("click_at", "right_click_at", "hover_at"):
+                        action_key = f"{fc.name}({fc.args.get('x')},{fc.args.get('y')})"
+                    elif fc.name == "type_text":
+                        action_key = f"type({fc.args.get('text', '')[:20]})"
+                    elif fc.name == "key_combination":
+                        action_key = f"key({fc.args.get('keys', '')})"
+                    else:
+                        continue
+                    self._recent_actions.append(action_key)
+
+            # Keep only the last 8 actions
+            self._recent_actions = self._recent_actions[-8:]
+
+            is_stuck = False
+            stuck_desc = ""
+
+            # Check: same single action 4x in a row
+            if len(self._recent_actions) >= 4:
+                last_4 = self._recent_actions[-4:]
+                if len(set(last_4)) == 1:
+                    is_stuck = True
+                    stuck_desc = f"same action 4x: {last_4[0]}"
+
+            # Check: same 2-action cycle repeated 3x (6 actions = 3 cycles)
+            if not is_stuck and len(self._recent_actions) >= 6:
+                pair = tuple(self._recent_actions[-2:])
+                prev_pairs = [
+                    tuple(self._recent_actions[-4:-2]),
+                    tuple(self._recent_actions[-6:-4]),
+                ]
+                if all(p == pair for p in prev_pairs):
+                    is_stuck = True
+                    stuck_desc = f"same 2-step cycle 3x: {pair[0]} -> {pair[1]}"
+
+            if is_stuck:
+                termcolor.cprint(f"  [!] STUCK: {stuck_desc}", color="red")
+                # Append stuck warning to the EXISTING function-response
+                # Content (last entry) instead of creating a new user Content
+                # — two consecutive user Contents breaks role alternation.
+                if history and history[-1].role == 'user':
+                    history[-1].parts.append(
+                        types.Part.from_text(
+                            text=(
+                                f"STOP! You are stuck in a loop ({stuck_desc}) "
+                                f"and it is NOT working. "
+                                f"You MUST try a COMPLETELY DIFFERENT approach:\n"
+                                f"1. Look at the screenshot carefully — what has actually changed?\n"
+                                f"2. Try a different method entirely\n"
+                                f"3. If you cannot make progress, call task_complete(summary='FAILED: stuck')"
+                            )
+                        )
+                    )
+                self._recent_actions.clear()
+
+        return exit_status
+
+    def config(self):
+        """Return the cached GenerateContentConfig (identical across turns)."""
+        return self._cached_config
+
+    def _build_config(self):
+        """Build the GenerateContentConfig once at init time."""
+        base = self.custom_declarations if self.custom_declarations is not None else get_custom_declarations()
+        all_declarations = base + self.extra_declarations
+        if self.use_browser_environment:
+            cu_tool = types.Tool(
+                computer_use=types.ComputerUse(
+                    environment=types.Environment.ENVIRONMENT_BROWSER,
+                ),
+            )
+        else:
+            cu_tool = types.Tool(computer_use=types.ComputerUse(
+                excluded_predefined_functions=[
+                    "navigate", "go_back", "go_forward",
+                    "search", "open_web_browser",
+                ],
+            ))
+
+        return GenerateContentConfig(
+            system_instruction=self.system_instruction,
+            temperature=0.3,
+            max_output_tokens=self.max_output_tokens,
+            tools=[cu_tool, types.Tool(function_declarations=all_declarations)],
+            # Highest available resolution for computer use screenshots.
+            media_resolution=getattr(
+                types.MediaResolution, "MEDIA_RESOLUTION_ULTRA_HIGH",
+                types.MediaResolution.MEDIA_RESOLUTION_HIGH,
+            ),
+            # Disable AFC — we handle function calls manually in the agentic loop.
+            # This suppresses the "Tools at indices [1] are not compatible with AFC" warning.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        )
+
+    def get_model_response(self, history, max_retries=5, base_delay_s=1):
+        """Call Gemini and return the response.
+
+        Retries transient errors with exponential backoff.
+        400 and 429 errors are raised immediately — the caller (agentic_loop)
+        handles 400 recovery with a clean history reset.
+        """
+        configuration = self.config()
+        for attempt in range(max_retries):
+            try:
+                return self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=history,
+                    config=configuration,
+                )
+            except Exception as e:
+                error_str = str(e)
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    termcolor.cprint("Rate limit (429). Stopping.", color="yellow")
+                    raise
+                # 400 errors — let them propagate to main loop for proper
+                # history reset (we can't safely fix history structure here).
+                if "400" in error_str and "INVALID_ARGUMENT" in error_str:
+                    termcolor.cprint(
+                        f"API error (400): {error_str[:200]}", color="red"
+                    )
+                    raise
+                print(e)
+                if attempt < max_retries - 1:
+                    delay = base_delay_s * (2 ** attempt)
+                    termcolor.cprint(f"Retry in {delay}s...", color="yellow")
+                    time.sleep(delay)
+                else:
+                    raise
+
+    def get_text(self, candidate: Candidate) -> Optional[str]:
+        if not candidate.content or not candidate.content.parts:
+            return None
+        text = [p.text for p in candidate.content.parts
+                if p.text and not getattr(p, "thought", False)]
+        return " ".join(text) or None
+
+    def extract_function_calls(self, candidate: Candidate):
+        if not candidate.content or not candidate.content.parts:
+            return []
+        return [p.function_call for p in candidate.content.parts if p.function_call]

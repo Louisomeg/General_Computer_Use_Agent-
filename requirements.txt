@@ -1,0 +1,11 @@
+google-genai
+termcolor
+pyyaml
+playwright
+fpdf2
+python-docx
+Pillow
+youtube-transcript-api
+yt-dlp
+opencv-python
+openai-whisper

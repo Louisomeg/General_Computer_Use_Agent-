@@ -1,0 +1,20 @@
+{
+  "query": "What is the boiling point of water at sea level?",
+  "research_plan": "SUB-QUESTIONS:\n1. What is the standard boiling point of water at sea level in degrees Celsius, Fahrenheit, and Kelvin?\n2. How is \"standard\" atmospheric pressure defined in relation to the boiling point of water?\n\nSEARCH QUERIES:\n- boiling point of water at sea level Celsius Fahrenheit Kelvin\n- standard boiling point of water 1 atm\n\nDONE WHEN:\n- The boiling point is retrieved in Celsius, Fahrenheit, and Kelvin.\n- The specific atmospheric pressure condition (1 atmosphere) is confirmed.",
+  "findings": {
+    "summary": "No findings.",
+    "data_points": [],
+    "sources": [],
+    "confidence": "low",
+    "gaps": []
+  },
+  "metadata": {
+    "status": "incomplete",
+    "planning_model": "gemini-3-pro-preview",
+    "browser_model": "gemini-3-flash-preview",
+    "turns_used": 9,
+    "max_turns": 8,
+    "elapsed_seconds": 61.9,
+    "timestamp": "2026-02-27T11:34:13.277179+00:00"
+  }
+}

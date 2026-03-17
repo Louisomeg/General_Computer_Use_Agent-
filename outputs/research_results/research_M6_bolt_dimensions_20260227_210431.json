@@ -1,0 +1,60 @@
+{
+  "query": "M6 bolt dimensions",
+  "research_plan": "SUB-QUESTIONS:\n1. What is the standard coarse thread pitch for an M6 bolt?\n2. What are the \"Width Across Flats\" (wrench size) and head height for a standard M6 hex bolt (ISO 4014/DIN 931)?\n3. What are the major diameter and recommended clearance hole sizes for M6 hardware?\n\nSEARCH QUERIES:\n- \"M6 metric bolt dimensions chart ISO 4014\"\n- \"DIN 933 M6 technical specifications pdf\"\n- \"M6 coarse thread pitch and tapping drill size\"\n- \"standard metric hex bolt head dimensions table\"\n\nBEST WEBSITES TO CHECK DIRECTLY:\n- https://www.engineeringtoolbox.com\n- https://www.mcmaster.com\n- https://www.accu.co.uk\n\nDONE WHEN:\n- Standard thread pitch (likely 1.0mm) is confirmed.\n- Hex head width (usually 10mm) and height are identified.\n- Data is corroborated by at least 2 independent engineering tables or manufacturer catalogs.",
+  "findings": {
+    "summary": "The standard dimensions for M6 metric hardware are well-defined across ISO and DIN standards. An M6 bolt has a standard coarse thread pitch of 1.0mm, requiring a 5.0mm tapping drill. The hexagonal head for standard bolts (ISO 4014, DIN 931, DIN 933) features a 10mm width across flats (wrench size) and a nominal head height of 4mm. For installation, a 6.6mm clearance hole is typically recommended for a standard medium fit. These specifications were corroborated across engineering reference tables and industrial fastener catalogs.",
+    "data_points": [
+      {
+        "fact": "M6 Coarse Thread Pitch",
+        "value": "1.00",
+        "unit": "mm",
+        "source": "https://www.engineeringtoolbox.com/metric-threads-d_777.html"
+      },
+      {
+        "fact": "M6 Tapping Drill Size (Coarse)",
+        "value": "5.00",
+        "source": "https://www.engineeringtoolbox.com/metric-threads-d_777.html",
+        "unit": "mm"
+      },
+      {
+        "fact": "M6 Width Across Flats (Wrench Size) - ISO 4014 / DIN 931 / DIN 933",
+        "value": "10.00",
+        "source": "https://www.westfieldfasteners.co.uk/Standards/ScrewBolt_HexHd_M_THRpart.html",
+        "unit": "mm"
+      },
+      {
+        "value": "4.00",
+        "fact": "M6 Head Height (Nominal) - ISO 4014 / DIN 931 / DIN 933",
+        "unit": "mm",
+        "source": "https://www.westfieldfasteners.co.uk/Standards/ScrewBolt_HexHd_M_THRpart.html"
+      },
+      {
+        "value": "6.00",
+        "fact": "M6 Major Diameter (Nominal)",
+        "unit": "mm",
+        "source": "https://www.engineeringtoolbox.com/metric-threads-d_777.html"
+      },
+      {
+        "source": "https://www.engineeringtoolbox.com/metric-threads-d_777.html",
+        "unit": "mm",
+        "fact": "M6 Recommended Clearance Hole (Medium Fit)",
+        "value": "6.60"
+      }
+    ],
+    "sources": [
+      "https://www.engineeringtoolbox.com/metric-threads-d_777.html",
+      "https://www.westfieldfasteners.co.uk/Standards/ScrewBolt_HexHd_M_THRpart.html"
+    ],
+    "confidence": "high",
+    "gaps": []
+  },
+  "metadata": {
+    "status": "complete",
+    "planning_model": "gemini-3-pro-preview",
+    "browser_model": "gemini-3-flash-preview",
+    "turns_used": 17,
+    "max_turns": 20,
+    "elapsed_seconds": 190.3,
+    "timestamp": "2026-02-27T21:04:31.941702+00:00"
+  }
+}

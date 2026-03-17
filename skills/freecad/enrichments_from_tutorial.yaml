@@ -1,0 +1,24 @@
+enrichments:
+- name: create_sketch
+  tips:
+  - To reset the view to be perpendicular to the sketch plane, click the corresponding face on the navigation cube in the
+    top-right corner.
+  - When modeling parts that extend along the Y-axis, use the XZ plane for the initial sketch.
+- name: pad
+  tips:
+  - For symmetrical parts, you can set the length to half the total width and then use the 'Symmetric to plane' option to
+    extrude in both directions.
+- name: chamfer
+  tips:
+  - You can create a non-uniform chamfer by selecting the 'Two distances' option in the chamfer parameters.
+- name: mirror
+  tips:
+  - In FreeCAD 1.0, when mirroring a whole body, ensure 'Transform body' is selected in the Mirror dialogue.
+- name: constrain_horizontal
+  tips:
+  - You can apply this constraint to two separate end points to force them to align horizontally, even if they aren't on the
+    same line.
+- name: constrain_symmetric
+  tips:
+  - To apply symmetry, select two points first, then select the reference axis (like the Red/Horizontal axis) before applying
+    the constraint.

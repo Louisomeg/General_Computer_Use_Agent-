@@ -1,0 +1,106 @@
+{
+  "query": "naruto vs one piece which is better?",
+  "mode": "parallel",
+  "sub_queries": [
+    "Naruto vs One Piece total manga sales and global franchise revenue statistics",
+    "comparative analysis of storytelling world-building and character development in Naruto vs One Piece",
+    "Naruto vs One Piece anime adaptation quality animation style and filler percentage comparison"
+  ],
+  "worker_results": [
+    {
+      "sub_query": "Naruto vs One Piece total manga sales and global franchise revenue statistics",
+      "data_points": 2,
+      "sources": 1,
+      "confidence": "medium"
+    },
+    {
+      "sub_query": "comparative analysis of storytelling world-building and character development in Naruto vs One Piece",
+      "data_points": 4,
+      "sources": 3,
+      "confidence": "medium"
+    },
+    {
+      "sub_query": "Naruto vs One Piece anime adaptation quality animation style and filler percentage comparison",
+      "data_points": 2,
+      "sources": 1,
+      "confidence": "medium"
+    }
+  ],
+  "findings": {
+    "summary": "Based on current data from the best-selling manga lists, One Piece has sold approximately 516.6 million copies globally, while Naruto has sold approximately 250 million copies. Specific global franchise revenue figures for 2024 were not fully retrieved within the research timeframe. | A comparative analysis of Naruto and One Piece reveals distinct approaches to storytelling. One Piece is widely recognized for its superior, expansive world-building that links geography, politics, and ancient lore across a global scale. Naruto offers a more concentrated world-building approach focused on the culture and history of shinobi. In terms of character development, Naruto excels in deep, psychological character arcs and the redemptive journeys of its cast, while One Piece focuses on the collective growth of its ensemble cast and their pursuit of personal and systemic freedom. Storytelling in Naruto is often viewed as a focused hero's journey, whereas One Piece is an epic saga with complex, multi-layered narrative threads. | Naruto Shippuden has a high filler percentage of 41%, with 203 filler episodes out of a total 500. One Piece is known for having a significantly lower filler percentage (typically around 9-10%), though it often compensates with slower pacing of canon material. Animation-wise, Naruto was produced by Studio Pierrot, known for high-quality peaks during key battles but some inconsistency. One Piece is produced by Toei Animation, which recently underwent a major stylistic shift in the Wano arc towards more fluid, high-budget cinematic animation.",
+    "data_points": [
+      {
+        "value": "516.6 million",
+        "unit": "copies",
+        "source": "https://en.wikipedia.org/wiki/List_of_best-selling_manga",
+        "fact": "One Piece total manga sales"
+      },
+      {
+        "fact": "Naruto total manga sales",
+        "value": "250 million",
+        "unit": "copies",
+        "source": "https://en.wikipedia.org/wiki/List_of_best-selling_manga"
+      },
+      {
+        "source": "https://www.bing.com/search?q=Naruto+vs+One+Piece+comparative+analysis+world-building+character+development+storytelling",
+        "value": "Characterized by a vast, interconnected world consisting of diverse islands in the Grand Line, each with unique socio-political structures and a deep history (Void Century).",
+        "unit": "N/A",
+        "fact": "One Piece World-building Scope"
+      },
+      {
+        "value": "Centres on the Five Great Shinobi Nations and the history of the ninja villages, focusing on the evolution of jutsu and the cycle of hatred.",
+        "source": "https://www.bing.com/search?q=Naruto+vs+One+Piece+comparative+analysis+world-building+character+development+storytelling",
+        "unit": "N/A",
+        "fact": "Naruto World-building Focus"
+      },
+      {
+        "source": "https://www.bing.com/search?q=Naruto+vs+One+Piece+comparative+analysis+world-building+character+development+storytelling",
+        "value": "Focuses heavily on individual emotional growth, overcoming loneliness, and redemption arcs for both protagonists and major antagonists.",
+        "fact": "Character Development in Naruto",
+        "unit": "N/A"
+      },
+      {
+        "source": "https://www.bing.com/search?q=Naruto+vs+One+Piece+comparative+analysis+world-building+character+development+storytelling",
+        "value": "Emphasizes the bond of the Straw Hat crew, individual dreams, and how characters are shaped by their quest for freedom against oppressive systems.",
+        "unit": "N/A",
+        "fact": "Character Development in One Piece"
+      },
+      {
+        "fact": "Naruto Shippuden filler percentage",
+        "value": "41",
+        "unit": "%",
+        "source": "https://www.animefillerlist.com/shows/naruto-shippuden"
+      },
+      {
+        "fact": "Naruto Shippuden total episodes and filler count",
+        "value": "500 total, 203 filler",
+        "unit": "episodes",
+        "source": "https://www.animefillerlist.com/shows/naruto-shippuden"
+      }
+    ],
+    "sources": [
+      "https://en.wikipedia.org/wiki/List_of_best-selling_manga",
+      "https://www.google.com/",
+      "https://duckduckgo.com/",
+      "https://www.bing.com/search?q=Naruto+vs+One+Piece+comparative+analysis+world-building+character+development+storytelling",
+      "https://www.animefillerlist.com/shows/naruto-shippuden"
+    ],
+    "confidence": "medium",
+    "gaps": [
+      "Global franchise revenue for Naruto and One Piece was not found within the turn limit.",
+      "Detailed side-by-side metric comparisons from specific scholarly or long-form critical essays were not fully accessed due to session constraints.",
+      "Specific One Piece filler percentage verified from source (typically ~9%)",
+      "Detailed animation style comparison from a technical source"
+    ]
+  },
+  "metadata": {
+    "status": "complete",
+    "planning_model": "gemini-3-pro-preview",
+    "browser_model": "gemini-3-flash-preview",
+    "num_workers": 3,
+    "turns_per_worker": 12,
+    "total_turns": 31,
+    "elapsed_seconds": 111.0,
+    "timestamp": "2026-02-27T20:18:22.620130+00:00"
+  }
+}

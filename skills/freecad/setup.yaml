@@ -1,0 +1,74 @@
+name: freecad_setup
+type: knowledge
+category: setup
+description: >
+  Initial setup procedures for FreeCAD 1.0: launching the application,
+  minimizing the agent terminal, selecting workbenches, creating documents,
+  and managing viewport orientation.
+
+operations:
+  - name: minimize_terminal
+    description: Minimize the agent's terminal window so it doesn't block FreeCAD
+    when_to_use: "First action in any task — the terminal covers the screen"
+    actions:
+      - what: "Minimize the terminal"
+        how: "Right-click the terminal in the TASKBAR (top bar) and click 'Minimize', or click the minimize button (dash icon) in the terminal's title bar"
+        gotcha: "Do NOT try to close, read, or interact with the terminal — just minimize it"
+
+  - name: launch_freecad
+    description: Open FreeCAD or bring an existing instance to focus
+    when_to_use: "Starting any CAD task — ensures FreeCAD is visible and ready"
+    actions:
+      - what: "Check if FreeCAD is already open"
+        how: "Look at the taskbar (top of screen) for a FreeCAD window entry"
+      - what: "If open — bring to focus"
+        how: "Click FreeCAD's entry in the taskbar"
+      - what: "If it has existing work — start fresh"
+        how: "File menu → New (creates a clean empty document)"
+      - what: "If not open — launch it"
+        how: "Applications menu (top-left corner or Activities) → Graphics → FreeCAD"
+        after: "Use wait_5_seconds to let it fully load before interacting"
+
+  - name: select_workbench
+    description: Switch to the Part Design workbench for 3D solid modeling
+    when_to_use: "After launching FreeCAD, before any modeling work"
+    actions:
+      - what: "Check current workbench"
+        how: "Look at the MENU BAR at the top — 'Part Design' should be one of the menu items"
+        skip_if: "'Part Design' already appears in the menu bar — workbench is active"
+      - what: "Switch workbench if needed"
+        how: "Find the workbench dropdown widget in the toolbar area (below menu bar) — it shows the current workbench name (may say 'Start' or another name). Click it and select 'Part Design' from the list"
+        verify: "'Part Design' now appears as a menu item in the menu bar"
+
+  - name: create_new_document
+    description: Create a new empty document in FreeCAD
+    when_to_use: "When FreeCAD has existing work and you need a clean start"
+    actions:
+      - what: "Create new document"
+        how: "File menu → New"
+        verify: "A new empty document tab appears, model tree shows minimal items"
+
+  - name: set_view
+    description: Reset the 3D viewport to show the full model clearly
+    when_to_use: "After creating or modifying geometry, or when the model is hard to see"
+    actions:
+      - what: "Fit entire model in view"
+        how: "View menu → Standard views → Fit All"
+      - what: "Set a standard viewing angle (optional)"
+        how: "View menu → Standard views → choose Isometric, Front, Top, Right, etc."
+    tips:
+      - "Use 'Top' view when you need to select a top face for sketching"
+      - "Use 'Isometric' or 'Home' for a general 3D overview of the part"
+      - "Use 'Front' view to see the side profile clearly"
+
+  - name: undo
+    description: Undo the last action in FreeCAD
+    when_to_use: "When a mistake was made — wrong click, wrong tool, wrong value"
+    actions:
+      - what: "Undo"
+        how: "Edit menu → Undo, or press key_combination('ctrl+z')"
+        gotcha: "Press MULTIPLE TIMES to undo several steps if needed"
+    tips:
+      - "NEVER use the Delete key — it permanently removes the wrong thing"
+      - "Always prefer Undo over Delete for fixing mistakes"
+      - "If Undo or Escape seems unresponsive, click once in the 3D viewport first, then retry"

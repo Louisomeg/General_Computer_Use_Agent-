@@ -1,0 +1,201 @@
+name: sketcher_tools
+type: knowledge
+category: sketcher
+description: >
+  Sketcher geometry tools and constraint tools for creating fully-defined
+  2D profiles in FreeCAD 1.0. These profiles are used as input for
+  Part Design operations like Pad and Pocket.
+
+operations:
+  # ── Geometry Tools ──────────────────────────────────────────────────
+
+  - name: draw_rectangle
+    description: Draw a rectangle defined by two diagonal corner clicks
+    when_to_use: "Rectangular cross-sections — base plates, walls, slots, any box-like profile"
+    prerequisite: "Must be inside an active sketch (the 'Sketch' menu is visible in the menu bar)"
+    actions:
+      - what: "Activate the rectangle tool"
+        how: "Sketch menu → Sketcher geometries → Rectangle"
+      - what: "Click the FIRST corner"
+        how: "Click in the upper-left area of the viewport, AWAY from the origin (where the red X-axis and green Y-axis lines cross). Stay at least 50 pixels from the axis lines."
+        gotcha: "Drawing near the origin causes edges to overlap with axis lines, making it hard to select individual edges for constraining later"
+      - what: "Click the SECOND corner"
+        how: "Click offset down-right from the first point — this creates the opposite diagonal corner of the rectangle"
+      - what: "Exit the rectangle tool"
+        how: "Press key_combination('escape') to deactivate the tool"
+        gotcha: "If you don't exit, the next click will start drawing another rectangle on top"
+    tips:
+      - "Exact size doesn't matter during drawing — constraints set the precise dimensions afterward"
+      - "A fully constrained sketch turns green (zero degrees of freedom)"
+      - "An under-constrained sketch has white lines — always add enough constraints to turn it green"
+
+  - name: draw_circle
+    description: Draw a circle by clicking the center point then an edge point
+    when_to_use: "Cylindrical features, holes, tubes, discs — any circular cross-section"
+    prerequisite: "Must be inside an active sketch"
+    actions:
+      - what: "Activate the circle tool"
+        how: "Sketch menu → Sketcher geometries → Circle (may also appear as 'Create circle by center')"
+      - what: "Click the CENTER point"
+        how: "Click at the ORIGIN point in the viewport — where the red X-axis and green Y-axis lines cross. Centering at the origin is ideal for circular profiles."
+      - what: "Click an EDGE point"
+        how: "Click roughly 50-80 pixels away from the center in any direction — this sets the approximate radius. The exact size will be set by constraints."
+      - what: "Exit the circle tool"
+        how: "Press key_combination('escape')"
+    tips:
+      - "Unlike rectangles, circles SHOULD be centered at the origin for best results"
+      - "Use 'Constrain radius' afterward to set the exact size"
+
+  - name: draw_polygon
+    description: Draw a regular polygon (hexagon, octagon, etc.)
+    when_to_use: "Hex bolt heads, hex nuts, decorative shapes — any regular polygon"
+    prerequisite: "Must be inside an active sketch"
+    actions:
+      - what: "Activate the polygon tool"
+        how: "Sketch menu → Sketcher geometries → Regular polygon"
+      - what: "Set the number of sides"
+        how: "In the Tasks panel (left side), find the 'Sides' or 'Corners' field and set it (e.g., 6 for hexagon, 8 for octagon)"
+      - what: "Click the CENTER"
+        how: "Click at the ORIGIN point in the viewport"
+      - what: "Click an EDGE point"
+        how: "Click away from the center to set the approximate size"
+      - what: "Exit the polygon tool"
+        how: "Press key_combination('escape')"
+    tips:
+      - "For hex bolts, the 'across flats' dimension is constrained on a FLAT EDGE, not a vertex"
+
+  - name: draw_line
+    description: Draw a single straight line between two points
+    when_to_use: "Construction lines, custom profiles, connecting arcs"
+    prerequisite: "Must be inside an active sketch"
+    actions:
+      - what: "Activate the line tool"
+        how: "Sketch menu → Sketcher geometries → Line"
+      - what: "Click the START point"
+        how: "Click where the line should begin"
+      - what: "Click the END point"
+        how: "Click where the line should end"
+      - what: "Exit the line tool"
+        how: "Press key_combination('escape') or right-click to stop"
+
+  - name: draw_arc
+    description: Draw a circular arc
+    when_to_use: "Rounded corners in custom profiles, partial circular features"
+    prerequisite: "Must be inside an active sketch"
+    actions:
+      - what: "Activate the arc tool"
+        how: "Sketch menu → Sketcher geometries → Arc by center (or 'Arc by 3 points' for start/end/midpoint)"
+      - what: "Click center or first point"
+        how: "Depends on arc type — for center-based, click the center first"
+      - what: "Click to define arc extent"
+        how: "Click start angle point, then end angle point"
+      - what: "Exit the arc tool"
+        how: "Press key_combination('escape')"
+
+  # ── Constraint Tools ────────────────────────────────────────────────
+
+  - name: constrain_distance
+    description: Set an exact linear dimension on a sketch edge or between two points
+    when_to_use: "After drawing geometry, to set precise width, height, length, or spacing"
+    prerequisite: "Must be inside an active sketch with geometry already drawn"
+    actions:
+      - what: "Select the edge to constrain"
+        how: "Click on the edge at the MIDPOINT of the line (not near corners — clicking near corners may select a point instead of the edge)"
+      - what: "Activate the distance constraint"
+        how: "Sketch menu → Sketcher constraints → Constrain distance"
+      - what: "Enter the dimension value"
+        how: "A dialog appears with a number input field. Type the value WITH units, e.g. '60 mm'. Always include a space and 'mm' after the number."
+        type_value: "{{value}} mm"
+        gotcha: "FreeCAD may display a default unit of micrometers (um) — ALWAYS type ' mm' explicitly to ensure millimeters"
+      - what: "Confirm the constraint"
+        how: "Click the 'OK' button in the dialog (do NOT just press Enter — it may not work reliably)"
+        verify: "The edge resizes to the specified dimension. A dimension annotation appears on the sketch."
+    tips:
+      - "Constrain width by clicking a HORIZONTAL edge, constrain height by clicking a VERTICAL edge"
+      - "You can also constrain distance between two POINTS by clicking two points before activating the tool"
+
+  - name: constrain_radius
+    description: Set an exact radius (or diameter) on a circle or arc
+    when_to_use: "After drawing a circle or arc, to set its precise size"
+    prerequisite: "Must be inside an active sketch with a circle or arc"
+    actions:
+      - what: "Select the circle or arc"
+        how: "Click on the CIRCLE EDGE (the curved line itself, NOT the center point)"
+      - what: "Activate the radius constraint"
+        how: "Sketch menu → Sketcher constraints → Constrain radius / diameter (may just say 'Constrain radius')"
+      - what: "Enter the radius value"
+        how: "Type the RADIUS value (which is HALF the diameter) with units"
+        type_value: "{{radius}} mm"
+      - what: "Confirm"
+        how: "Click OK"
+        verify: "Circle resizes to the specified size. A radius dimension annotation appears."
+
+  - name: constrain_equal
+    description: Make two edges the same length or two circles the same radius
+    when_to_use: "When multiple features must be identical size (e.g., screw holes)"
+    actions:
+      - what: "Select the first element"
+        how: "Click the first edge or circle"
+      - what: "Select the second element"
+        how: "Hold CTRL and click the second edge or circle"
+      - what: "Apply equality"
+        how: "Sketch menu → Sketcher constraints → Constrain equal"
+        verify: "Both elements become the same size — changing one updates the other"
+
+  - name: constrain_horizontal
+    description: Force an edge or two points to be perfectly horizontal
+    when_to_use: "Straightening lines that should be flat/horizontal"
+    actions:
+      - what: "Select the edge"
+        how: "Click the edge to make horizontal"
+      - what: "Apply horizontal constraint"
+        how: "Sketch menu → Sketcher constraints → Constrain horizontal"
+
+  - name: constrain_vertical
+    description: Force an edge or two points to be perfectly vertical
+    when_to_use: "Straightening lines that should be upright/vertical"
+    actions:
+      - what: "Select the edge"
+        how: "Click the edge to make vertical"
+      - what: "Apply vertical constraint"
+        how: "Sketch menu → Sketcher constraints → Constrain vertical"
+
+  - name: constrain_symmetric
+    description: Make elements symmetric across a reference line
+    when_to_use: "When a profile needs to be centered/mirrored across an axis"
+    actions:
+      - what: "Select two symmetric elements and the axis"
+        how: "Click the first point, then the second point, then the symmetry line (axis)"
+      - what: "Apply symmetric constraint"
+        how: "Sketch menu → Sketcher constraints → Constrain symmetric"
+
+  - name: external_geometry
+    description: Project an edge from an existing 3D feature into the active sketch as a reference
+    when_to_use: "When you need to align new sketch geometry to existing 3D edges (e.g., aligning a wall to a base plate edge)"
+    actions:
+      - what: "Activate external geometry tool"
+        how: "Sketch menu → External geometry (or 'Sketcher external geometries → External geometry')"
+      - what: "Click the 3D edge to project"
+        how: "Click on an edge of the existing solid visible in the viewport"
+        verify: "A purple/magenta reference line appears in the sketch"
+      - what: "Exit the tool"
+        how: "Press key_combination('escape')"
+    tips:
+      - "External geometry lines are references only — they don't create 3D features"
+      - "You can snap new geometry to external geometry edges for precise alignment"
+      - "Very useful when sketching on a face that needs to align with features below"
+
+tips:
+  - "Always fully constrain your sketches — under-constrained sketches (white lines) cause problems when editing parameters later"
+  - "A fully constrained sketch turns GREEN (zero degrees of freedom)"
+  - "Use Construction Geometry (blue lines) for reference lines that help position things but don't create 3D shapes"
+  - "When the auto-constraint icons pop up next to the cursor, pay attention — they might create unwanted constraints"
+  - "If a constraint makes the sketch behave unexpectedly, check the constraints list in the Elements panel and delete the unwanted one using Undo"
+
+troubleshooting:
+  - problem: "Drawing lines snap to the wrong points or create unwanted automatic constraints"
+    solution: "Pay attention to auto-constraint icons near the cursor. If a line is stubborn, check the constraints panel and Undo the unwanted automatic constraint."
+  - problem: "Cannot select an individual edge — keeps selecting the whole shape"
+    solution: "Zoom in closer and click at the midpoint of the edge, not near corners or intersections."
+  - problem: "The sketch shows 'over-constrained' (red lines)"
+    solution: "You added too many constraints. Use Edit → Undo to remove the last constraint, or check the constraints panel to find redundant ones."

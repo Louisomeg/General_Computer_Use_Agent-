@@ -1,0 +1,33 @@
+name: assembly_basics
+type: knowledge
+category: assembly
+description: Basic assembly operations for combining multiple parts.
+operations:
+- name: create_assembly
+  description: Initialize a new assembly container.
+  when_to_use: When you need to bring multiple bodies together and define their relative positions.
+  actions:
+  - what: Switch to Assembly workbench
+    how: Workbench selector → Assembly
+  - what: New assembly
+    how: Assembly menu → Create assembly
+    verify: An 'Assembly' container appears in the Tree View.
+- name: insert_component
+  description: Add an existing Body or part into the assembly.
+  when_to_use: When populating the assembly with modeled parts.
+  prerequisite: The assembly must be active.
+  actions:
+  - what: Insert part
+    how: Assembly menu → Insert component
+  - what: Select part
+    how: Choose the Body (e.g., 'stem') from the dialogue.
+- name: create_joint
+  description: Constrain two components relative to each other.
+  when_to_use: To fix a screw into a hole or join two faces.
+  prerequisite: Two parts must be present in the assembly.
+  actions:
+  - what: Select mating features
+    how: Click a face or edge on the first part, then Ctrl+Click the corresponding face/edge on the second part.
+  - what: Apply joint
+    how: Assembly menu → Create joint
+    verify: The components snap together according to the joint type.

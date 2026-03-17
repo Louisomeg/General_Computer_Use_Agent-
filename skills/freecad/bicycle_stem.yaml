@@ -1,0 +1,182 @@
+name: bicycle_stem
+type: tutorial
+description: >
+  Model a fully constrained, parametric 3D bicycle stem in FreeCAD 1.0.
+  Covers sketching, constraints, parametric variables (VarSet), padding,
+  pocketing, chamfers, mirroring, B-splines, and assembly with fasteners.
+  This skill also serves as a general FreeCAD tutorial — its tips,
+  troubleshooting, and workflow steps apply to any FreeCAD modeling task.
+difficulty: beginner
+source:
+  title: "FreeCAD 1.0 Beginner Tutorial: Modeling a Bicycle Stem"
+  creator: FreeCAD Tutorial
+  duration: "25:00"
+
+prerequisites:
+  - Basic computer literacy
+  - FreeCAD 1.0 installed on the system
+
+tools:
+  - name: FreeCAD
+    version: "1.0.0"
+    purpose: Primary 3D modeling environment
+  - name: Fasteners Workbench
+    version: Add-on
+    purpose: Generating standard hardware like ISO metric screws for assemblies
+
+tips:
+  - Always fully constrain your sketches (they should turn green). Unconstrained elements lead to model breakages when variables are changed.
+  - Use the VarSet object to control key dimensions globally. This makes iterating and creating variations much faster.
+  - When drawing lines that connect to arcs, avoid snapping directly to endpoints initially. Draw nearby and manually apply Tangent or Coincident constraints.
+  - Use symmetric extrusions (Padding) when dealing with symmetrical parts. It keeps origin planes centered for mirroring later.
+
+troubleshooting:
+  - problem: "Expression fails to parse when doing math with a variable (e.g., VarSet.Size + 20)."
+    solution: "Type the unit symbol explicitly (e.g., VarSet.Size + 20mm). FreeCAD needs unit consistency."
+  - problem: "Cannot see the sketching plane because the 3D model is blocking it."
+    solution: "Activate the Section View tool in the sketcher toolbar to slice away blocking geometry."
+  - problem: "A pocket operation fails because it splits the part into two separate pieces."
+    solution: "Select the Pocket in the tree, go to Properties, set Allow Compound to True."
+
+steps:
+  - step_number: 1
+    title: Initial Setup and Interface Navigation
+    description: >
+      Configure the initial FreeCAD settings, including language, units,
+      navigation style (e.g., Blender style), and theme (Dark theme recommended).
+      Understand the concept of Workbenches.
+    substeps:
+      - Select preferred navigation style and dark theme.
+      - Create a new document.
+      - Switch to the Part Design workbench.
+      - "Click 'Create body' to start a new part and reveal the origin coordinate system."
+    commands: "Part Design -> Create Body"
+    settings: "Blender navigation style, Dark Theme"
+    gotchas: "Don't jump straight into drawing without creating a Body first in the Part Design workflow."
+
+  - step_number: 2
+    title: Base Sketch and Constraints
+    description: >
+      Create the base 2D profile of the stem using circles, polylines,
+      and geometric constraints.
+    substeps:
+      - "Click 'Create sketch' and select the XZ plane."
+      - Draw a circle on the horizontal axis.
+      - Draw a rectangle using the polyline tool around the circle.
+      - Apply horizontal/vertical constraints to straighten lines.
+      - Apply a symmetric constraint to the rectangle across the vertical axis.
+      - "Add dimensions (Diameter: 21mm, Height: 47mm, Rear length: 27mm)."
+    commands: "D key (Dimension tool), S key (Symmetric constraint)"
+    gotchas: "Unconstrained elements can cause reconstruction errors later. Ensure all lines turn green."
+
+  - step_number: 3
+    title: Introducing Parametric Variables (VarSet)
+    description: >
+      Create a global variable to control the size of the stem dynamically.
+    substeps:
+      - Click the VarSet toolbar icon.
+      - "Name the variable 'Size' and assign a value of 55mm."
+      - Double-click the sketch to edit it.
+      - "Click the dimension defining the circle's position, click the 'fx' (expression) icon."
+      - "Type 'VarSet.Size' to link the dimension to the variable."
+      - "Link the overall length to 'VarSet.Size + 20mm'."
+    commands: "VarSet.Size + 20mm"
+    gotchas: "Always include unit symbols (like 'mm') when performing mathematical operations in the expression editor, otherwise it will fail to parse."
+
+  - step_number: 4
+    title: Padding and Chamfering
+    description: >
+      Extrude the 2D sketch into a 3D solid and soften the edges.
+    substeps:
+      - Select the sketch and click 'Pad'.
+      - "Set length to 22mm and check 'Symmetric to plane'."
+      - Select the top and bottom outer edges.
+      - "Click 'Chamfer', choose 'Two distances', and set them to 8mm and 5mm."
+    settings: "Pad: Symmetric to plane, 22mm. Chamfer: Two distances (8mm, 5mm)"
+    gotchas: "Selecting faces instead of edges for the chamfer will yield incorrect results."
+
+  - step_number: 5
+    title: Creating Side Insets (Pockets)
+    description: >
+      Use external geometry and complex sketching to create grooves on the side of the stem.
+    substeps:
+      - Select the side face and create a new sketch.
+      - "Use 'External Geometry' to project the back edge and the circle."
+      - Draw an arc concentric to the projected circle.
+      - Draw horizontal lines and semi-circles to form grooves.
+      - "Apply tangent, equal, and dimensional constraints to fully define the grooves."
+      - "Link horizontal lengths to 'VarSet.Size'."
+      - Exit sketch and apply a Pocket operation (10mm deep).
+    commands: "VarSet.Size - 14.5mm"
+    gotchas: "Be careful not to accidentally snap to incorrect endpoints when drawing lines; sometimes it's better to draw nearby and manually apply coincident constraints."
+
+  - step_number: 6
+    title: Creating Bottom Cut-outs with B-Splines
+    description: >
+      Cut out the bottom of the stem to save weight using standard geometry
+      and a B-spline for a smooth curve.
+    substeps:
+      - Select the side face inside the new pocket and create a sketch.
+      - Project necessary external edges.
+      - Draw a polyline tracing the bottom profile.
+      - "Convert one line segment into a 'Construction Line'."
+      - Use the B-Spline tool to connect points along the construction line to create a smooth curve.
+      - Constrain the B-spline points to the construction geometry.
+      - "Exit sketch and Pocket 'Through All' symmetrically."
+    settings: "Pocket: Through All, Symmetric to plane"
+    gotchas: "B-splines can be tricky to fully constrain; relying on construction geometry endpoints helps lock them down."
+
+  - step_number: 7
+    title: Mirroring Features
+    description: >
+      Mirror the side pocket and bottom cut-out to the other side of the stem.
+    substeps:
+      - Select the Pocket features in the tree.
+      - Click the Mirror tool.
+      - Select the XZ plane as the mirror plane.
+    settings: "Mirror Plane: XZ"
+    gotchas: "If the base pad wasn't symmetric, the mirror plane would be off-center."
+
+  - step_number: 8
+    title: Fork Steerer and Handlebar Holes
+    description: >
+      Create the large vertical hole for the fork steerer and horizontal
+      holes for fasteners.
+    substeps:
+      - "Sketch a 28mm circle on the top face and pocket it 'Up to face' (bottom face)."
+      - Sketch four 8mm circles on the front face for the handlebar clamp bolts.
+      - Constrain them symmetrically and dimension them.
+      - Pocket 30mm deep.
+      - Sketch two circles on the side face for the steerer clamp bolts.
+      - Pocket them 9mm deep, then pocket again with a smaller diameter for the screw threads.
+
+  - step_number: 9
+    title: Creating the Clamp Split
+    description: >
+      Cut a gap into the model so the stem can act as a clamp.
+    substeps:
+      - Sketch on the XZ plane.
+      - Project the top and bottom edges.
+      - Draw a narrow rectangle (5mm wide).
+      - Position it slightly offset from the center holes using constraints.
+      - "Pocket 'Through All' with the 'Symmetric' option checked."
+    settings: "Pocket -> Allow Compound: True (in properties)"
+    gotchas: "By default, Part Design doesn't allow operations that result in multiple disjoint solids. You must select the Pocket feature and set 'Allow Compound' to True in the properties panel."
+
+  - step_number: 10
+    title: Assemblies and Fasteners
+    description: >
+      Use the Add-on manager to install the Fasteners workbench, then
+      build an assembly.
+    substeps:
+      - Install Fasteners workbench from the Add-on Manager and restart FreeCAD.
+      - Switch to the Assembly workbench.
+      - Create a new Assembly.
+      - Insert the Stem part and ground it.
+      - "Switch to Fasteners workbench, generate an ISO 4762 Hexagon head screw (M8)."
+      - "Return to Assembly, insert the screw."
+      - Create a Joint selecting the underside of the screw head and the seating face on the stem.
+      - "Duplicate the screw and repeat for all holes, adjusting length parameters as needed."
+    commands: "Ctrl+C, Ctrl+V to duplicate screws"
+    settings: "Fastener: ISO 4762, M8x25 (and varying lengths)"
+    gotchas: "Generating real threads on fasteners is computationally heavy; leave it turned off unless strictly necessary for rendering."
